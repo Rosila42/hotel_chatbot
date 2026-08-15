@@ -29,4 +29,11 @@ class AutomationWorker:
         )
 
     def _run_morning_arrival_check(self) -> dict:
+        status = self.service.status("MORNING_ARRIVAL_CHECK")
+        if not status["enabled"]:
+            return {
+                "automation_id": "MORNING_ARRIVAL_CHECK",
+                "status": "SKIPPED",
+                "reason": "Automation is disabled",
+            }
         return self.service.run("MORNING_ARRIVAL_CHECK")
