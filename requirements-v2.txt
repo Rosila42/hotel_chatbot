@@ -1,0 +1,6 @@
+fastapi>=0.115,<1
+pydantic>=2.8,<3
+sqlalchemy>=2.0,<3
+apscheduler>=3.10,<4
+litellm>=1.70,<2
+pytest>=8.0,<9
