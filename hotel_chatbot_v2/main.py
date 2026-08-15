@@ -10,6 +10,8 @@ from hotel_chatbot_v2.core.permissions import Identity, PermissionService
 from hotel_chatbot_v2.core.router import ChatRouter
 from hotel_chatbot_v2.core.session import ChatSession
 from hotel_chatbot_v2.integrations.pms.mock_adapter import MockPMSAdapter
+from hotel_chatbot_v2.services.automation_service import AutomationService
+from hotel_chatbot_v2.services.automation_worker import AutomationWorker
 from hotel_chatbot_v2.services.pms_service import PMSService
 from hotel_chatbot_v2.storage import ChatMessageRecord, ChatSessionRecord, get_db, init_db
 
@@ -17,9 +19,13 @@ app = FastAPI(title="Hotel PMS Chatbot V2", version="0.1.0")
 
 _pms = PMSService(MockPMSAdapter())
 _permissions = PermissionService()
-_commands = CommandRegistry(_pms, _permissions)
+_automation = AutomationService(_pms)
+_commands = CommandRegistry(_pms, _permissions, _automation)
 _router = ChatRouter(_commands)
+_worker = AutomationWorker(_automation)
 init_db()
+_worker.start()
+_worker.schedule_morning_arrival_check()
 
 
 def _load_or_create_session(
