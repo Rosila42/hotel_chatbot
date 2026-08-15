@@ -12,14 +12,22 @@ from models.commands import (
 )
 from core.permissions import Identity, PermissionService
 from services.automation_service import AutomationService
+from services.faq_service import FAQService
 from services.pms_service import PMSService
 
 
 class CommandRegistry:
-    def __init__(self, pms: PMSService, permissions: PermissionService, automation: AutomationService | None = None) -> None:
+    def __init__(
+        self,
+        pms: PMSService,
+        permissions: PermissionService,
+        automation: AutomationService | None = None,
+        faq: FAQService | None = None,
+    ) -> None:
         self.pms = pms
         self.permissions = permissions
         self.automation = automation
+        self.faq = faq or FAQService()
         self._commands = self._build_commands()
 
     def _build_commands(self) -> dict[str, CommandDefinition]:
@@ -93,7 +101,7 @@ class CommandRegistry:
         if name == "GET_OPERATIONAL_SUMMARY":
             return self.pms.get_operational_summary(self._parse_date(params.get("date")) if params.get("date") else None)
         if name == "FAQ_SEARCH":
-            return {"query": self._required_text(params, "query"), "answer": "FAQ content is not configured yet."}
+            return self.faq.search(self._required_text(params, "query"))
         if not self.automation:
             raise RuntimeError("Automation service is not configured")
         if name == "LIST_AUTOMATIONS":
@@ -133,7 +141,10 @@ class CommandRegistry:
         if command == "GET_SYSTEM_STATUS":
             return "; ".join(f"{k}: {v}" for k, v in result.items())
         if command == "FAQ_SEARCH":
-            return result["answer"]
+            matches = result.get("matches", [])
+            if not matches:
+                return "I couldn't find an answer in the approved FAQ content."
+            return matches[0]["answer"]
         if isinstance(result, list):
             return f"Found {len(result)} result(s)."
         return str(result)
