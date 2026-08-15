@@ -14,6 +14,8 @@ class TokenIdentity:
     identity: Identity
 
 
+# V1/demo authentication only. Production integration should federate identity
+# with the host PMS/application and must not accept client-supplied roles.
 DEMO_TOKENS = {
     os.getenv("CHATBOT_RECEPTION_TOKEN", "demo-reception-token"): Identity("demo-reception", "receptionist", "reception"),
     os.getenv("CHATBOT_HOUSEKEEPING_TOKEN", "demo-housekeeping-token"): Identity("demo-housekeeping", "housekeeper", "housekeeping"),
