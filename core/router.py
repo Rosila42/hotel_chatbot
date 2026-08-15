@@ -23,26 +23,55 @@ class ChatRouter:
             if normalized in {"confirm", "confirmed", "yes", "proceed"}:
                 pending = session.pending_command
                 session.clear_pending()
-                return self.registry.execute(session.identity, CommandRequest(pending["command"], pending["parameters"]), confirmed=True)
+                return self.registry.execute(
+                    session.identity,
+                    CommandRequest(pending["command"], pending["parameters"]),
+                    confirmed=True,
+                )
             if normalized in {"cancel", "cancelled", "no", "abort"}:
                 session.clear_pending()
                 return CommandResult(True, "Pending action cancelled.")
             return CommandResult(False, "A confirmation is pending. Reply CONFIRM to proceed or CANCEL to abort.")
+
         request = self._interpret(text)
         if request is None:
             return CommandResult(False, "I could not identify a supported action. Try HELP to see available capabilities.")
         command = self.registry.get(request.name)
         if command and command.confirmation == ConfirmationPolicy.REQUIRED:
             session.set_pending(request.name, request.parameters)
-            return CommandResult(False, f"Please confirm: {command.description} ({request.name}). Reply CONFIRM or CANCEL.", command=request.name)
+            return CommandResult(
+                False,
+                f"Please confirm: {command.description} ({request.name}). Reply CONFIRM or CANCEL.",
+                command=request.name,
+            )
         return self.registry.execute(session.identity, request)
 
     def _interpret(self, text: str) -> CommandRequest | None:
         normalized = text.lower()
+
         if normalized in {"help", "what can you do", "commands"}:
             return CommandRequest("HELP")
         if "system status" in normalized or normalized == "status":
             return CommandRequest("GET_SYSTEM_STATUS")
+
+        automation_id = self._automation_id(normalized)
+        if automation_id:
+            if any(word in normalized for word in ("list", "show")) and "automation" in normalized:
+                return CommandRequest("LIST_AUTOMATIONS")
+            if "enable" in normalized or "activate" in normalized:
+                return CommandRequest("ENABLE_AUTOMATION", {"automation_id": automation_id})
+            if "disable" in normalized or "deactivate" in normalized:
+                return CommandRequest("DISABLE_AUTOMATION", {"automation_id": automation_id})
+            if "run" in normalized or "execute" in normalized:
+                return CommandRequest("RUN_AUTOMATION", {"automation_id": automation_id})
+            if "history" in normalized:
+                return CommandRequest("GET_AUTOMATION_HISTORY", {"automation_id": automation_id})
+            if "status" in normalized:
+                return CommandRequest("GET_AUTOMATION_STATUS", {"automation_id": automation_id})
+
+        if "automation" in normalized and any(word in normalized for word in ("list", "show")):
+            return CommandRequest("LIST_AUTOMATIONS")
+
         if "arrival" in normalized or "checking in" in normalized:
             return CommandRequest("GET_ARRIVALS", {"date": date.today().isoformat()})
         if "departure" in normalized or "checking out" in normalized:
@@ -56,19 +85,28 @@ class ChatRouter:
             if reservation_id and reservation_id.lower() not in {"for", "status"}:
                 return CommandRequest("GET_RESERVATION", {"reservation_id": reservation_id})
         room = self._extract(text, r"room\s*(\d+)")
-        if room and any(word in normalized for word in ("status", "ready", "dirty", "cleaning", "available")):
-            return CommandRequest("GET_ROOM_STATUS", {"room_number": room})
         if room and "mark" in normalized and "clean" in normalized:
             return CommandRequest("MARK_ROOM_CLEAN", {"room_number": room})
+        if room and any(word in normalized for word in ("status", "ready", "dirty", "cleaning", "available")):
+            return CommandRequest("GET_ROOM_STATUS", {"room_number": room})
         if "incident" in normalized or "broken" in normalized or "not working" in normalized:
             incident_type = "HOUSEKEEPING" if "clean" in normalized or "housekeeping" in normalized else "MAINTENANCE"
-            return CommandRequest("CREATE_INCIDENT", {"room_number": room, "incident_type": incident_type, "description": text})
+            return CommandRequest(
+                "CREATE_INCIDENT",
+                {"room_number": room, "incident_type": incident_type, "description": text},
+            )
         if "incidents" in normalized:
             return CommandRequest("GET_INCIDENTS", {"status": "OPEN"})
         if "operational summary" in normalized or "hotel summary" in normalized or "daily summary" in normalized:
             return CommandRequest("GET_OPERATIONAL_SUMMARY")
         if any(word in normalized for word in ("breakfast", "checkout time", "check-out time", "policy", "wifi", "wi-fi")):
             return CommandRequest("FAQ_SEARCH", {"query": text})
+        return None
+
+    @staticmethod
+    def _automation_id(text: str) -> str | None:
+        if "morning_arrival_check" in text or "morning arrival check" in text:
+            return "MORNING_ARRIVAL_CHECK"
         return None
 
     @staticmethod
