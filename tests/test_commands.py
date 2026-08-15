@@ -6,13 +6,14 @@ from integrations.pms.mock_adapter import MockPMSAdapter
 from models.commands import CommandRequest
 from services.automation_service import AutomationService
 from services.pms_service import PMSService
+from storage import init_db
 
 
 def build_registry():
+    init_db()
     pms = PMSService(MockPMSAdapter())
-    permissions = PermissionService()
     automation = AutomationService(pms)
-    return CommandRegistry(pms, permissions, automation)
+    return CommandRegistry(pms, PermissionService(), automation)
 
 
 def test_receptionist_can_read_arrivals():
