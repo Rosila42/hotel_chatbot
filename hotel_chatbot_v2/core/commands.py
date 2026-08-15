@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 from hotel_chatbot_v2.models.commands import (
@@ -10,13 +11,15 @@ from hotel_chatbot_v2.models.commands import (
     OperationType,
 )
 from hotel_chatbot_v2.core.permissions import Identity, PermissionService
+from hotel_chatbot_v2.services.automation_service import AutomationService
 from hotel_chatbot_v2.services.pms_service import PMSService
 
 
 class CommandRegistry:
-    def __init__(self, pms: PMSService, permissions: PermissionService) -> None:
+    def __init__(self, pms: PMSService, permissions: PermissionService, automation: AutomationService | None = None) -> None:
         self.pms = pms
         self.permissions = permissions
+        self.automation = automation
         self._commands = self._build_commands()
 
     def _build_commands(self) -> dict[str, CommandDefinition]:
@@ -34,17 +37,19 @@ class CommandRegistry:
             "RESOLVE_INCIDENT": CommandDefinition("RESOLVE_INCIDENT", "Resolve an incident.", OperationType.WRITE, "pms.incident.resolve", ConfirmationPolicy.RECOMMENDED),
             "GET_OPERATIONAL_SUMMARY": CommandDefinition("GET_OPERATIONAL_SUMMARY", "Get operational summary.", OperationType.READ, "management.reporting.read"),
             "FAQ_SEARCH": CommandDefinition("FAQ_SEARCH", "Search FAQ content.", OperationType.READ, None),
+            "LIST_AUTOMATIONS": CommandDefinition("LIST_AUTOMATIONS", "List approved automations.", OperationType.READ, "automation.read"),
+            "ENABLE_AUTOMATION": CommandDefinition("ENABLE_AUTOMATION", "Enable an approved automation.", OperationType.AUTOMATION, "automation.manage", ConfirmationPolicy.REQUIRED),
+            "DISABLE_AUTOMATION": CommandDefinition("DISABLE_AUTOMATION", "Disable an approved automation.", OperationType.AUTOMATION, "automation.manage", ConfirmationPolicy.REQUIRED),
+            "RUN_AUTOMATION": CommandDefinition("RUN_AUTOMATION", "Run an approved automation.", OperationType.AUTOMATION, "automation.execute", ConfirmationPolicy.REQUIRED),
+            "GET_AUTOMATION_STATUS": CommandDefinition("GET_AUTOMATION_STATUS", "Get automation status.", OperationType.READ, "automation.read"),
+            "GET_AUTOMATION_HISTORY": CommandDefinition("GET_AUTOMATION_HISTORY", "Get automation execution history.", OperationType.READ, "automation.read"),
         }
 
     def get(self, name: str) -> CommandDefinition | None:
         return self._commands.get(name.upper())
 
     def list_for(self, identity: Identity) -> list[CommandDefinition]:
-        return [
-            command
-            for command in self._commands.values()
-            if self.permissions.can(identity, command.permission)
-        ]
+        return [command for command in self._commands.values() if self.permissions.can(identity, command.permission)]
 
     def execute(self, identity: Identity, request: CommandRequest) -> CommandResult:
         command = self.get(request.name)
@@ -58,13 +63,13 @@ class CommandRegistry:
         except (ValueError, KeyError) as exc:
             return CommandResult(False, str(exc), command=command.name)
         except Exception:
-            return CommandResult(False, "The requested PMS operation could not be completed.", command=command.name)
+            return CommandResult(False, "The requested operation could not be completed.", command=command.name)
 
     def _dispatch(self, name: str, params: dict[str, Any]) -> Any:
         if name == "HELP":
             return [c.name for c in self._commands.values()]
         if name == "GET_SYSTEM_STATUS":
-            return {"pms": "available", "chatbot": "available", "ai": "not configured", "automation": "not configured"}
+            return {"pms": "available", "chatbot": "available", "ai": "not configured", "automation": "configured" if self.automation else "not configured"}
         if name == "SEARCH_GUEST":
             return self.pms.search_guest(self._required_text(params, "name"))
         if name == "GET_RESERVATION":
@@ -80,17 +85,28 @@ class CommandRegistry:
         if name == "GET_INCIDENTS":
             return self.pms.get_incidents(params.get("status"), params.get("room_number"))
         if name == "CREATE_INCIDENT":
-            return self.pms.create_incident(
-                params.get("room_number"),
-                self._required_text(params, "incident_type"),
-                self._required_text(params, "description"),
-            )
+            return self.pms.create_incident(params.get("room_number"), self._required_text(params, "incident_type"), self._required_text(params, "description"))
         if name == "RESOLVE_INCIDENT":
             return self.pms.resolve_incident(self._required_text(params, "incident_id"))
         if name == "GET_OPERATIONAL_SUMMARY":
             return self.pms.get_operational_summary(self._parse_date(params.get("date")) if params.get("date") else None)
         if name == "FAQ_SEARCH":
             return {"query": self._required_text(params, "query"), "answer": "FAQ content is not configured yet."}
+        if not self.automation:
+            raise RuntimeError("Automation service is not configured")
+        automation_id = self._required_text(params, "automation_id")
+        if name == "LIST_AUTOMATIONS":
+            return self.automation.list_automations()
+        if name == "ENABLE_AUTOMATION":
+            return self.automation.enable(automation_id)
+        if name == "DISABLE_AUTOMATION":
+            return self.automation.disable(automation_id)
+        if name == "RUN_AUTOMATION":
+            return self.automation.run(automation_id)
+        if name == "GET_AUTOMATION_STATUS":
+            return self.automation.status(automation_id)
+        if name == "GET_AUTOMATION_HISTORY":
+            return self.automation.history(automation_id)
         raise KeyError(name)
 
     @staticmethod
@@ -101,8 +117,7 @@ class CommandRegistry:
         return str(value).strip()
 
     @staticmethod
-    def _parse_date(value: Any):
-        from datetime import date
+    def _parse_date(value: Any) -> date:
         if value in (None, "", "today"):
             return date.today()
         if isinstance(value, date):
