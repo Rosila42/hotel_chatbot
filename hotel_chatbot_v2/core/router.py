@@ -18,7 +18,6 @@ class ChatRouter:
         text = message.strip()
         if not text:
             return CommandResult(False, "Please enter a request.")
-
         request = self._interpret(text)
         if request is None:
             return CommandResult(False, "I could not identify a supported action. Try HELP to see available capabilities.")
@@ -40,19 +39,18 @@ class ChatRouter:
             if name:
                 return CommandRequest("SEARCH_GUEST", {"name": name})
         if "reservation" in normalized:
-            reservation_id = self._extract(resolved_text=normalized, pattern=r"(?:reservation|booking)\s*#?([a-z0-9-]+)")
-            if reservation_id:
+            reservation_id = self._extract(normalized, r"(?:reservation|booking)\s*#?([a-z0-9-]+)")
+            if reservation_id and reservation_id.lower() not in {"for", "status"}:
                 return CommandRequest("GET_RESERVATION", {"reservation_id": reservation_id})
         room = self._extract(text, r"room\s*(\d+)")
         if room and any(word in normalized for word in ("status", "ready", "dirty", "cleaning", "available")):
             return CommandRequest("GET_ROOM_STATUS", {"room_number": room})
-        if room and any(phrase in normalized for phrase in ("mark", "clean")):
+        if room and "mark" in normalized and "clean" in normalized:
             return CommandRequest("MARK_ROOM_CLEAN", {"room_number": room})
         if "incident" in normalized or "broken" in normalized or "not working" in normalized:
             incident_type = "HOUSEKEEPING" if "clean" in normalized or "housekeeping" in normalized else "MAINTENANCE"
-            description = text
-            return CommandRequest("CREATE_INCIDENT", {"room_number": room, "incident_type": incident_type, "description": description})
-        if "open incidents" in normalized or "incidents" in normalized:
+            return CommandRequest("CREATE_INCIDENT", {"room_number": room, "incident_type": incident_type, "description": text})
+        if "open incidents" in normalized or normalized == "incidents" or "incidents" in normalized:
             return CommandRequest("GET_INCIDENTS", {"status": "OPEN"})
         if "operational summary" in normalized or "hotel summary" in normalized or "daily summary" in normalized:
             return CommandRequest("GET_OPERATIONAL_SUMMARY")
