@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
+from sqlalchemy.orm import Session
 
 from hotel_chatbot_v2.api.auth import authenticate
 from hotel_chatbot_v2.api.schemas import ChatRequest, ChatResponse
@@ -10,6 +11,7 @@ from hotel_chatbot_v2.core.router import ChatRouter
 from hotel_chatbot_v2.core.session import ChatSession
 from hotel_chatbot_v2.integrations.pms.mock_adapter import MockPMSAdapter
 from hotel_chatbot_v2.services.pms_service import PMSService
+from hotel_chatbot_v2.storage import ChatMessageRecord, ChatSessionRecord, get_db, init_db
 
 app = FastAPI(title="Hotel PMS Chatbot V2", version="0.1.0")
 
@@ -17,20 +19,50 @@ _pms = PMSService(MockPMSAdapter())
 _permissions = PermissionService()
 _commands = CommandRegistry(_pms, _permissions)
 _router = ChatRouter(_commands)
-_sessions: dict[str, ChatSession] = {}
+init_db()
 
 
-def _get_session(identity: Identity, session_id: str | None, shift: str | None) -> ChatSession:
+def _load_or_create_session(
+    db: Session, identity: Identity, session_id: str | None, shift: str | None
+) -> ChatSession:
     if session_id:
-        session = _sessions.get(session_id)
-        if session is None:
-            raise ValueError("Session not found")
-        if session.identity.user_id != identity.user_id:
-            raise PermissionError("Session does not belong to authenticated user")
+        record = db.get(ChatSessionRecord, session_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if record.user_id != identity.user_id:
+            raise HTTPException(status_code=403, detail="Session does not belong to authenticated user")
+        history_rows = (
+            db.query(ChatMessageRecord)
+            .filter(ChatMessageRecord.session_id == session_id)
+            .order_by(ChatMessageRecord.created_at.asc())
+            .all()
+        )
+        session = ChatSession(
+            session_id=record.session_id,
+            identity=identity,
+            shift=record.shift,
+            created_at=record.created_at,
+        )
+        session.history = [{"role": row.role, "content": row.content} for row in history_rows][-50:]
         return session
+
     session = ChatSession.create(identity, shift=shift)
-    _sessions[session.session_id] = session
+    db.add(
+        ChatSessionRecord(
+            session_id=session.session_id,
+            user_id=identity.user_id,
+            role=identity.role,
+            department=identity.department,
+            shift=shift,
+        )
+    )
+    db.commit()
     return session
+
+
+def _persist_message(db: Session, session_id: str, role: str, content: str) -> None:
+    db.add(ChatMessageRecord(session_id=session_id, role=role, content=content))
+    db.commit()
 
 
 @app.get("/health")
@@ -39,19 +71,16 @@ def health() -> dict[str, str]:
 
 
 @app.post("/chat", response_model=ChatResponse)
-def chat(request: ChatRequest, identity: Identity = Depends(authenticate)) -> ChatResponse:
-    try:
-        session = _get_session(identity, request.session_id, request.shift)
-    except PermissionError as exc:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ValueError as exc:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+def chat(
+    request: ChatRequest,
+    identity: Identity = Depends(authenticate),
+    db: Session = Depends(get_db),
+) -> ChatResponse:
+    session = _load_or_create_session(db, identity, request.session_id, request.shift)
+    _persist_message(db, session.session_id, "user", request.message)
 
-    session.add_message("user", request.message)
     result = _router.handle(identity, request.message)
-    session.add_message("assistant", result.message)
+    _persist_message(db, session.session_id, "assistant", result.message)
 
     return ChatResponse(
         session_id=session.session_id,
