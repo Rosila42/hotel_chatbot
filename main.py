@@ -28,40 +28,19 @@ _worker.start()
 _worker.schedule_morning_arrival_check()
 
 
-def _load_or_create_session(
-    db: Session, identity: Identity, session_id: str | None, shift: str | None
-) -> ChatSession:
+def _load_or_create_session(db: Session, identity: Identity, session_id: str | None, shift: str | None) -> ChatSession:
     if session_id:
         record = db.get(ChatSessionRecord, session_id)
         if record is None:
             raise HTTPException(status_code=404, detail="Session not found")
         if record.user_id != identity.user_id:
             raise HTTPException(status_code=403, detail="Session does not belong to authenticated user")
-        history_rows = (
-            db.query(ChatMessageRecord)
-            .filter(ChatMessageRecord.session_id == session_id)
-            .order_by(ChatMessageRecord.created_at.asc())
-            .all()
-        )
-        session = ChatSession(
-            session_id=record.session_id,
-            identity=identity,
-            shift=record.shift,
-            created_at=record.created_at,
-        )
+        history_rows = db.query(ChatMessageRecord).filter(ChatMessageRecord.session_id == session_id).order_by(ChatMessageRecord.created_at.asc()).all()
+        session = ChatSession(session_id=record.session_id, identity=identity, shift=record.shift, created_at=record.created_at)
         session.history = [{"role": row.role, "content": row.content} for row in history_rows][-50:]
         return session
-
     session = ChatSession.create(identity, shift=shift)
-    db.add(
-        ChatSessionRecord(
-            session_id=session.session_id,
-            user_id=identity.user_id,
-            role=identity.role,
-            department=identity.department,
-            shift=shift,
-        )
-    )
+    db.add(ChatSessionRecord(session_id=session.session_id, user_id=identity.user_id, role=identity.role, department=identity.department, shift=shift))
     db.commit()
     return session
 
@@ -77,24 +56,12 @@ def health() -> dict[str, str]:
 
 
 @app.post("/chat", response_model=ChatResponse)
-def chat(
-    request: ChatRequest,
-    identity: Identity = Depends(authenticate),
-    db: Session = Depends(get_db),
-) -> ChatResponse:
+def chat(request: ChatRequest, identity: Identity = Depends(authenticate), db: Session = Depends(get_db)) -> ChatResponse:
     session = _load_or_create_session(db, identity, request.session_id, request.shift)
     _persist_message(db, session.session_id, "user", request.message)
-
-    result = _router.handle(identity, request.message)
+    result = _router.handle(session, request.message)
     _persist_message(db, session.session_id, "assistant", result.message)
-
-    return ChatResponse(
-        session_id=session.session_id,
-        success=result.success,
-        message=result.message,
-        command=result.command,
-        data=result.data,
-    )
+    return ChatResponse(session_id=session.session_id, success=result.success, message=result.message, command=result.command, data=result.data)
 
 
 @app.get("/capabilities")
