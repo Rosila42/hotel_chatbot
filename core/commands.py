@@ -3,7 +3,13 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from models.commands import CommandDefinition, CommandRequest, CommandResult, ConfirmationPolicy, OperationType
+from models.commands import (
+    CommandDefinition,
+    CommandRequest,
+    CommandResult,
+    ConfirmationPolicy,
+    OperationType,
+)
 from core.permissions import Identity, PermissionService
 from services.automation_service import AutomationService
 from services.pms_service import PMSService
@@ -45,7 +51,7 @@ class CommandRegistry:
     def list_for(self, identity: Identity) -> list[CommandDefinition]:
         return [command for command in self._commands.values() if self.permissions.can(identity, command.permission)]
 
-    def execute(self, identity: Identity, request: CommandRequest, confirmed: bool = False) -> CommandResult:
+    def execute(self, identity: Identity, request: CommandRequest, *, confirmed: bool = False) -> CommandResult:
         command = self.get(request.name)
         if command is None:
             return CommandResult(False, f"Unknown command: {request.name}", command=request.name)
@@ -62,45 +68,72 @@ class CommandRegistry:
             return CommandResult(False, "The requested operation could not be completed.", command=command.name)
 
     def _dispatch(self, name: str, params: dict[str, Any]) -> Any:
-        if name == "HELP": return [c.name for c in self._commands.values()]
-        if name == "GET_SYSTEM_STATUS": return {"pms": "available", "chatbot": "available", "ai": "not configured", "automation": "configured" if self.automation else "not configured"}
-        if name == "SEARCH_GUEST": return self.pms.search_guest(self._required_text(params, "name"))
-        if name == "GET_RESERVATION": return self.pms.get_reservation(params.get("reservation_id"), params.get("guest_name"))
-        if name == "GET_ARRIVALS": return self.pms.get_arrivals(self._parse_date(params.get("date")))
-        if name == "GET_DEPARTURES": return self.pms.get_departures(self._parse_date(params.get("date")))
-        if name == "GET_ROOM_STATUS": return self.pms.get_room_status(params.get("room_number"), params.get("filter"))
-        if name == "MARK_ROOM_CLEAN": return self.pms.mark_room_clean(self._required_text(params, "room_number"))
-        if name == "GET_INCIDENTS": return self.pms.get_incidents(params.get("status"), params.get("room_number"))
-        if name == "CREATE_INCIDENT": return self.pms.create_incident(params.get("room_number"), self._required_text(params, "incident_type"), self._required_text(params, "description"))
-        if name == "RESOLVE_INCIDENT": return self.pms.resolve_incident(self._required_text(params, "incident_id"))
-        if name == "GET_OPERATIONAL_SUMMARY": return self.pms.get_operational_summary(self._parse_date(params.get("date")) if params.get("date") else None)
-        if name == "FAQ_SEARCH": return {"query": self._required_text(params, "query"), "answer": "FAQ content is not configured yet."}
-        if not self.automation: raise RuntimeError("Automation service is not configured")
-        automation_id = self._required_text(params, "automation_id") if name != "LIST_AUTOMATIONS" else None
-        if name == "LIST_AUTOMATIONS": return self.automation.list_automations()
-        if name == "ENABLE_AUTOMATION": return self.automation.enable(automation_id)
-        if name == "DISABLE_AUTOMATION": return self.automation.disable(automation_id)
-        if name == "RUN_AUTOMATION": return self.automation.run(automation_id)
-        if name == "GET_AUTOMATION_STATUS": return self.automation.status(automation_id)
-        if name == "GET_AUTOMATION_HISTORY": return self.automation.history(automation_id)
+        if name == "HELP":
+            return [c.name for c in self._commands.values()]
+        if name == "GET_SYSTEM_STATUS":
+            return {"pms": "available", "chatbot": "available", "ai": "not configured", "automation": "configured" if self.automation else "not configured"}
+        if name == "SEARCH_GUEST":
+            return self.pms.search_guest(self._required_text(params, "name"))
+        if name == "GET_RESERVATION":
+            return self.pms.get_reservation(params.get("reservation_id"), params.get("guest_name"))
+        if name == "GET_ARRIVALS":
+            return self.pms.get_arrivals(self._parse_date(params.get("date")))
+        if name == "GET_DEPARTURES":
+            return self.pms.get_departures(self._parse_date(params.get("date")))
+        if name == "GET_ROOM_STATUS":
+            return self.pms.get_room_status(params.get("room_number"), params.get("filter"))
+        if name == "MARK_ROOM_CLEAN":
+            return self.pms.mark_room_clean(self._required_text(params, "room_number"))
+        if name == "GET_INCIDENTS":
+            return self.pms.get_incidents(params.get("status"), params.get("room_number"))
+        if name == "CREATE_INCIDENT":
+            return self.pms.create_incident(params.get("room_number"), self._required_text(params, "incident_type"), self._required_text(params, "description"))
+        if name == "RESOLVE_INCIDENT":
+            return self.pms.resolve_incident(self._required_text(params, "incident_id"))
+        if name == "GET_OPERATIONAL_SUMMARY":
+            return self.pms.get_operational_summary(self._parse_date(params.get("date")) if params.get("date") else None)
+        if name == "FAQ_SEARCH":
+            return {"query": self._required_text(params, "query"), "answer": "FAQ content is not configured yet."}
+        if not self.automation:
+            raise RuntimeError("Automation service is not configured")
+        if name == "LIST_AUTOMATIONS":
+            return self.automation.list_automations()
+        automation_id = self._required_text(params, "automation_id")
+        if name == "ENABLE_AUTOMATION":
+            return self.automation.enable(automation_id)
+        if name == "DISABLE_AUTOMATION":
+            return self.automation.disable(automation_id)
+        if name == "RUN_AUTOMATION":
+            return self.automation.run(automation_id)
+        if name == "GET_AUTOMATION_STATUS":
+            return self.automation.status(automation_id)
+        if name == "GET_AUTOMATION_HISTORY":
+            return self.automation.history(automation_id)
         raise KeyError(name)
 
     @staticmethod
     def _required_text(params: dict[str, Any], key: str) -> str:
         value = params.get(key)
-        if value is None or not str(value).strip(): raise ValueError(f"Missing required parameter: {key}")
+        if value is None or not str(value).strip():
+            raise ValueError(f"Missing required parameter: {key}")
         return str(value).strip()
 
     @staticmethod
     def _parse_date(value: Any) -> date:
-        if value in (None, "", "today"): return date.today()
-        if isinstance(value, date): return value
+        if value in (None, "", "today"):
+            return date.today()
+        if isinstance(value, date):
+            return value
         return date.fromisoformat(str(value))
 
     @staticmethod
     def _format_message(command: str, result: Any) -> str:
-        if command == "HELP": return "Available commands: " + ", ".join(result)
-        if command == "GET_SYSTEM_STATUS": return "; ".join(f"{k}: {v}" for k, v in result.items())
-        if command == "FAQ_SEARCH": return result["answer"]
-        if isinstance(result, list): return f"Found {len(result)} result(s)."
+        if command == "HELP":
+            return "Available commands: " + ", ".join(result)
+        if command == "GET_SYSTEM_STATUS":
+            return "; ".join(f"{k}: {v}" for k, v in result.items())
+        if command == "FAQ_SEARCH":
+            return result["answer"]
+        if isinstance(result, list):
+            return f"Found {len(result)} result(s)."
         return str(result)
