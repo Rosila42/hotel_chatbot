@@ -85,7 +85,7 @@ def chat(
     session = _load_or_create_session(db, identity, request.session_id, request.shift)
     _persist_message(db, session.session_id, "user", request.message)
 
-    result = _router.handle(identity, request.message)
+    result = _router.handle(session, request.message)
     _persist_message(db, session.session_id, "assistant", result.message)
 
     return ChatResponse(
