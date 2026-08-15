@@ -51,12 +51,14 @@ class CommandRegistry:
     def list_for(self, identity: Identity) -> list[CommandDefinition]:
         return [command for command in self._commands.values() if self.permissions.can(identity, command.permission)]
 
-    def execute(self, identity: Identity, request: CommandRequest) -> CommandResult:
+    def execute(self, identity: Identity, request: CommandRequest, *, confirmed: bool = False) -> CommandResult:
         command = self.get(request.name)
         if command is None:
             return CommandResult(False, f"Unknown command: {request.name}", command=request.name)
         if not self.permissions.can(identity, command.permission):
             return CommandResult(False, "You are not authorized to perform this action.", command=command.name)
+        if command.confirmation == ConfirmationPolicy.REQUIRED and not confirmed:
+            return CommandResult(False, f"Confirmation required before executing {command.name}.", command=command.name)
         try:
             result = self._dispatch(command.name, request.parameters)
             return CommandResult(True, self._format_message(command.name, result), result, command.name)
@@ -94,9 +96,9 @@ class CommandRegistry:
             return {"query": self._required_text(params, "query"), "answer": "FAQ content is not configured yet."}
         if not self.automation:
             raise RuntimeError("Automation service is not configured")
-        automation_id = self._required_text(params, "automation_id")
         if name == "LIST_AUTOMATIONS":
             return self.automation.list_automations()
+        automation_id = self._required_text(params, "automation_id")
         if name == "ENABLE_AUTOMATION":
             return self.automation.enable(automation_id)
         if name == "DISABLE_AUTOMATION":
