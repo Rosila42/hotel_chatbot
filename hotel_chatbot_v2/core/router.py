@@ -5,7 +5,8 @@ from datetime import date
 
 from hotel_chatbot_v2.core.commands import CommandRegistry
 from hotel_chatbot_v2.core.permissions import Identity
-from hotel_chatbot_v2.models.commands import CommandRequest, CommandResult
+from hotel_chatbot_v2.core.session import ChatSession
+from hotel_chatbot_v2.models.commands import CommandRequest, CommandResult, ConfirmationPolicy
 
 
 class ChatRouter:
@@ -14,14 +15,40 @@ class ChatRouter:
     def __init__(self, registry: CommandRegistry) -> None:
         self.registry = registry
 
-    def handle(self, identity: Identity, message: str) -> CommandResult:
+    def handle(self, session: ChatSession, message: str) -> CommandResult:
         text = message.strip()
         if not text:
             return CommandResult(False, "Please enter a request.")
+
+        normalized = text.lower()
+        if session.pending_command:
+            if normalized in {"confirm", "confirmed", "yes", "proceed"}:
+                pending = session.pending_command
+                session.clear_pending()
+                return self.registry.execute(
+                    session.identity,
+                    CommandRequest(pending["command"], pending["parameters"]),
+                    confirmed=True,
+                )
+            if normalized in {"cancel", "cancelled", "no", "abort"}:
+                session.clear_pending()
+                return CommandResult(True, "Pending action cancelled.")
+            return CommandResult(False, "A confirmation is pending. Reply CONFIRM to proceed or CANCEL to abort.")
+
         request = self._interpret(text)
         if request is None:
             return CommandResult(False, "I could not identify a supported action. Try HELP to see available capabilities.")
-        return self.registry.execute(identity, request)
+
+        command = self.registry.get(request.name)
+        if command and command.confirmation == ConfirmationPolicy.REQUIRED:
+            session.set_pending(request.name, request.parameters)
+            return CommandResult(
+                False,
+                f"Please confirm: {command.description} ({request.name}). Reply CONFIRM or CANCEL.",
+                command=request.name,
+            )
+
+        return self.registry.execute(session.identity, request)
 
     def _interpret(self, text: str) -> CommandRequest | None:
         normalized = text.lower()
@@ -71,5 +98,5 @@ class ChatRouter:
             if index >= 0:
                 candidate = text[index + len(keyword):].strip(" :#,-")
                 if candidate:
-                    return candidate
+                    return candidate.removeprefix("for ").strip()
         return None
