@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Generator
 
-from sqlalchemy import DateTime, String, Text, create_engine
+from sqlalchemy import Boolean, DateTime, String, Text, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 
@@ -35,6 +35,14 @@ class ChatMessageRecord(Base):
     role: Mapped[str] = mapped_column(String(32))
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AutomationDefinitionRecord(Base):
+    __tablename__ = "automation_definitions"
+
+    automation_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    schedule: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
 
 class AutomationExecutionRecord(Base):
