@@ -19,13 +19,13 @@ from storage import ChatMessageRecord, ChatSessionRecord, get_db, init_db
 
 app = FastAPI(title="Hotel PMS Chatbot V2", version="0.1.0")
 
+init_db()
 _pms = PMSService(MockPMSAdapter())
 _permissions = PermissionService()
 _automation = AutomationService(_pms)
 _commands = CommandRegistry(_pms, _permissions, _automation)
 _router = ChatRouter(_commands)
 _worker = AutomationWorker(_automation)
-init_db()
 _worker.start()
 _worker.schedule_morning_arrival_check()
 
