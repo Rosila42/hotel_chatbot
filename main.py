@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from api.auth import authenticate
@@ -16,6 +19,9 @@ from services.automation_service import AutomationService
 from services.automation_worker import AutomationWorker
 from services.pms_service import PMSService
 from storage import ChatMessageRecord, ChatSessionRecord, get_db, init_db
+
+ROOT = Path(__file__).resolve().parent
+WEB_DIR = ROOT / "web"
 
 app = FastAPI(title="Hotel PMS Chatbot V2", version="0.1.0")
 
@@ -59,8 +65,8 @@ def _load_or_create_session(
         if record.pending_command:
             try:
                 parameters = json.loads(record.pending_parameters or "{}")
-            except json.JSONDecodeError:
-                raise HTTPException(status_code=500, detail="Stored pending action is invalid")
+            except json.JSONDecodeError as exc:
+                raise HTTPException(status_code=500, detail="Stored pending action is invalid") from exc
             session.set_pending(record.pending_command, parameters)
         return session
 
@@ -95,6 +101,11 @@ def _persist_session_state(db: Session, session: ChatSession) -> None:
     db.commit()
 
 
+@app.get("/")
+def root() -> RedirectResponse:
+    return RedirectResponse(url="/app/")
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -125,3 +136,6 @@ def chat(
 @app.get("/capabilities")
 def capabilities(identity: Identity = Depends(authenticate)) -> dict[str, list[str]]:
     return {"commands": [command.name for command in _commands.list_for(identity)]}
+
+
+app.mount("/app", StaticFiles(directory=WEB_DIR, html=True), name="web")
