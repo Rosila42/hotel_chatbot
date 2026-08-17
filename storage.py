@@ -57,6 +57,21 @@ class AutomationExecutionRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class AuditRecord(Base):
+    __tablename__ = "audit_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(128), index=True)
+    role: Mapped[str] = mapped_column(String(64))
+    department: Mapped[str] = mapped_column(String(64))
+    command: Mapped[str] = mapped_column(String(128), index=True)
+    operation_type: Mapped[str] = mapped_column(String(32))
+    success: Mapped[bool] = mapped_column(Boolean)
+    parameters: Mapped[str] = mapped_column(Text, default="{}")
+    details: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
 
