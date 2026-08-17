@@ -1,0 +1,2 @@
+# Optional AI support. The deterministic chatbot does not require these packages.
+litellm>=1.70,<2
