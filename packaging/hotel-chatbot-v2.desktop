@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Hotel Chatbot V2
+Comment=Local hotel PMS chatbot and automation assistant
+Exec=/opt/hotel-chatbot-v2/hotel-chatbot-v2
+Icon=hotel-chatbot-v2
+Terminal=false
+Categories=Office;Network;
+StartupNotify=true
