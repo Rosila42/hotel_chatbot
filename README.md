@@ -1,12 +1,50 @@
-# Hotel PMS Chatbot
+# Hotel PMS Chatbot V2
 
-V2 development is on `feat/v2-architecture`.
+A lightweight, local web application that adds a conversational and automation layer to an existing hotel PMS.
 
-The default `main` branch remains the original prototype baseline.
+V2 is being developed on `feat/v2-architecture`.
 
-## V2 quick start on Ubuntu
+## What it is
 
-### 1. Get the V2 branch
+This project is **not a replacement PMS**. The PMS remains the system of record.
+
+The application provides:
+
+- deterministic hotel FAQ;
+- PMS information access;
+- controlled PMS operations;
+- predefined automation workflows;
+- role-based permissions;
+- persistent sessions and audit history;
+- an optional AI layer that is not required for core operation.
+
+## Local web application
+
+The V2 product runs locally as a small FastAPI web service and is opened in a normal browser.
+
+```text
+Browser
+   ↓
+FastAPI
+   ↓
+Chat Core
+   ├── FAQ
+   ├── PMS Service → PMS Adapter
+   └── Automation Worker
+```
+
+SQLite is used for local persistence. No MySQL, PostgreSQL, Redis, Celery, Docker, or cloud service is required for the V2 demo.
+
+## Ubuntu setup
+
+Recommended: Python 3.11+
+
+```bash
+sudo apt update
+sudo apt install python3.11 python3.11-venv git
+```
+
+Clone the repository and switch to V2:
 
 ```bash
 git clone https://github.com/Rosila42/hotel_chatbot.git
@@ -14,110 +52,82 @@ cd hotel_chatbot
 git checkout feat/v2-architecture
 ```
 
-### 2. Create the virtual environment
-
-Python 3.11 is recommended.
+Install the core application:
 
 ```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
+bash install_v2.sh
 ```
 
-If the machine only provides `python3`, use:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-### 3. Install the V2 core
-
-```bash
-python -m pip install --upgrade pip
-python -m pip install -r requirements-v2.txt
-```
-
-The deterministic V2 core does **not** require an LLM.
-
-Optional AI dependencies are isolated in:
-
-```bash
-python -m pip install -r requirements-ai.txt
-```
-
-Do this only when the optional AI layer is actually being configured.
-
-### 4. Verify V2
-
-```bash
-bash verify_v2.sh
-```
-
-This runs the pytest suite, compiles the source tree, and imports the FastAPI application.
-
-### 5. Run the API
+Run it:
 
 ```bash
 bash run_v2.sh
 ```
 
-Or, with the virtual environment already activated:
+The launcher starts the local server and, on Ubuntu desktops with `xdg-open`, opens:
 
-```bash
-python -m uvicorn main:app --host 127.0.0.1 --port 8000
+```text
+http://127.0.0.1:8000/app/
 ```
 
-Open:
+The FastAPI documentation is available at:
 
 ```text
 http://127.0.0.1:8000/docs
 ```
 
-### 6. Demo authentication tokens
+## Demo users
 
-These are development-only tokens:
+The V2 demo currently uses simple local bearer tokens:
 
 ```text
 Reception:     demo-reception-token
 Housekeeping:  demo-housekeeping-token
-Manager:       demo-manager-token
+Management:    demo-manager-token
 ```
 
-For example:
+These are demonstration credentials only. Production deployments should federate identity with the host PMS/application.
+
+## Verification
+
+Run:
 
 ```bash
-curl -H 'Authorization: Bearer demo-reception-token' \
-  http://127.0.0.1:8000/capabilities
+bash verify_v2.sh
 ```
 
-Do not use the demo tokens in production.
+This performs the pytest suite, Python compilation check, and FastAPI import check.
 
-## Data
+## Optional AI
 
-V2 uses SQLite by default and creates:
+AI is deliberately separated from the deterministic core.
 
-```text
-hotel_chatbot_v2.db
+The core installation does **not** require an LLM provider.
+
+When AI work begins, install the optional dependency set:
+
+```bash
+python -m pip install -r requirements-ai.txt
 ```
 
-The database file is ignored by Git.
+The AI path remains behind `AIService` and a thin `LLMAdapter`.
 
-## Architecture
+## Development status
 
-The deterministic application is the core. The LLM is optional.
+Completed V2 foundation:
 
-```text
-Chat UI
-  ↓
-FastAPI
-  ↓
-Authentication / Session
-  ↓
-Core Router / Command Registry
-  ↓
-Services
-  ↓
-PMS Adapter / Automation
-```
+- FastAPI API
+- local web UI
+- SQLite persistence
+- authentication/identity boundary
+- command registry
+- deterministic intent routing
+- mock PMS adapter
+- automation service and worker
+- confirmation workflow
+- audit logging
+- PMS resilience policy
+- pytest coverage
+- optional AI boundary
 
-The PMS remains the system of record. Direct PMS database integration is not part of V1.
+Remaining product work includes deeper FAQ content, richer department workflows, production authentication integration, a real PMS adapter, and optional AI features.
