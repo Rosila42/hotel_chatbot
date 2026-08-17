@@ -1,13 +1,24 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime
+from pathlib import Path
 from typing import Generator
 
 from sqlalchemy import Boolean, DateTime, String, Text, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 
-DATABASE_URL = "sqlite:///./hotel_chatbot_v2.db"
+APP_DATA_DIR = Path(
+    os.environ.get(
+        "XDG_DATA_HOME",
+        str(Path.home() / ".local" / "share"),
+    )
+) / "hotel-chatbot-v2"
+APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+DATABASE_PATH = APP_DATA_DIR / "hotel_chatbot_v2.db"
+DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
