@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hotel PMS Chatbot</title>
+  <link rel="stylesheet" href="/app/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">HOTEL PMS</div>
+      <h1>Staff Assistant</h1>
+    </div>
+    <div class="status" id="status">Connecting…</div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <section>
+        <h2>Staff context</h2>
+        <label for="role">Role</label>
+        <select id="role">
+          <option value="reception">Reception</option>
+          <option value="housekeeping">Housekeeping</option>
+          <option value="manager">Management</option>
+        </select>
+
+        <label for="shift">Shift</label>
+        <select id="shift">
+          <option value="">Not specified</option>
+          <option value="morning">Morning</option>
+          <option value="afternoon">Afternoon</option>
+          <option value="night">Night</option>
+        </select>
+      </section>
+
+      <section>
+        <h2>Available</h2>
+        <div id="capabilities" class="capabilities">Loading…</div>
+      </section>
+
+      <section>
+        <h2>Try</h2>
+        <button class="quick" data-message="Who is checking in today?">Today's arrivals</button>
+        <button class="quick" data-message="Show operational summary">Operational summary</button>
+        <button class="quick" data-message="What is the status of room 101?">Room 101 status</button>
+        <button class="quick" data-message="What is the breakfast policy?">Breakfast FAQ</button>
+      </section>
+    </aside>
+
+    <section class="chat-panel">
+      <div id="messages" class="messages"></div>
+      <form id="chat-form" class="composer">
+        <input id="message" autocomplete="off" placeholder="Ask the hotel assistant…" maxlength="4000">
+        <button type="submit">Send</button>
+      </form>
+    </section>
+  </main>
+
+  <script src="/app/app.js"></script>
+</body>
+</html>
