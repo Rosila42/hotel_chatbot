@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -20,7 +21,15 @@ from services.automation_worker import AutomationWorker
 from services.pms_service import PMSService
 from storage import ChatMessageRecord, ChatSessionRecord, get_db, init_db
 
-ROOT = Path(__file__).resolve().parent
+
+def _application_root() -> Path:
+    """Return the source root or PyInstaller's bundled application root."""
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS)
+    return Path(__file__).resolve().parent
+
+
+ROOT = _application_root()
 WEB_DIR = ROOT / "web"
 
 app = FastAPI(title="Hotel PMS Chatbot V2", version="0.1.0")
