@@ -18,6 +18,24 @@ The application provides:
 - persistent sessions and audit history;
 - an optional AI layer that is not required for core operation.
 
+## Normal-user experience on Ubuntu
+
+The intended distribution format is a native Debian package (`.deb`). A non-technical user should not need a terminal.
+
+```text
+Download Hotel Chatbot V2 .deb
+            ↓
+Double-click the file
+            ↓
+Ubuntu Software → Install
+            ↓
+Open Applications → Hotel Chatbot V2
+            ↓
+Browser opens automatically
+```
+
+The package bundles the Python application and its core dependencies. SQLite data is stored under the user's Linux application-data directory, not inside the installed program directory.
+
 ## Local web application
 
 The V2 product runs locally as a small FastAPI web service and is opened in a normal browser.
@@ -35,36 +53,26 @@ Chat Core
 
 SQLite is used for local persistence. No MySQL, PostgreSQL, Redis, Celery, Docker, or cloud service is required for the V2 demo.
 
-## Ubuntu setup
+## Ubuntu package build
 
-Recommended: Python 3.11+
+The repository contains a GitHub Actions workflow that builds the Ubuntu `.deb` package from the V2 branch.
+
+The resulting package can be downloaded from the workflow artifact and installed by double-clicking it in Ubuntu Software.
+
+For development machines, the terminal-based setup remains available:
 
 ```bash
 sudo apt update
 sudo apt install python3.11 python3.11-venv git
-```
 
-Clone the repository and switch to V2:
-
-```bash
 git clone https://github.com/Rosila42/hotel_chatbot.git
 cd hotel_chatbot
 git checkout feat/v2-architecture
-```
-
-Install the core application:
-
-```bash
 bash install_v2.sh
-```
-
-Run it:
-
-```bash
 bash run_v2.sh
 ```
 
-The launcher starts the local server and, on Ubuntu desktops with `xdg-open`, opens:
+The developer launcher starts the local server and, on Ubuntu desktops with `xdg-open`, opens:
 
 ```text
 http://127.0.0.1:8000/app/
@@ -90,7 +98,7 @@ These are demonstration credentials only. Production deployments should federate
 
 ## Verification
 
-Run:
+Developers can run:
 
 ```bash
 bash verify_v2.sh
@@ -118,6 +126,7 @@ Completed V2 foundation:
 
 - FastAPI API
 - local web UI
+- native Ubuntu packaging workflow
 - SQLite persistence
 - authentication/identity boundary
 - command registry
