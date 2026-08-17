@@ -4,26 +4,18 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
-PYTHON_BIN="${PYTHON_BIN:-python3}"
 VENV_DIR="${VENV_DIR:-.venv}"
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-8000}"
 BROWSER_HOST="${BROWSER_HOST:-127.0.0.1}"
 
-if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
-  echo "Python executable '$PYTHON_BIN' was not found. Install Python 3.11+ first." >&2
+if [ ! -x "$VENV_DIR/bin/python" ]; then
+  echo "V2 is not installed yet. Run: bash install_v2.sh" >&2
   exit 1
-fi
-
-if [ ! -d "$VENV_DIR" ]; then
-  echo "Creating virtual environment in $VENV_DIR..."
-  "$PYTHON_BIN" -m venv "$VENV_DIR"
 fi
 
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
-python -m pip install --upgrade pip
-python -m pip install -r requirements-v2.txt
 
 export CHATBOT_RECEPTION_TOKEN="${CHATBOT_RECEPTION_TOKEN:-demo-reception-token}"
 export CHATBOT_HOUSEKEEPING_TOKEN="${CHATBOT_HOUSEKEEPING_TOKEN:-demo-housekeeping-token}"
