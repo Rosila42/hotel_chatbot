@@ -11,6 +11,7 @@ from models.commands import (
     OperationType,
 )
 from core.permissions import Identity, PermissionService
+from services.audit_service import AuditService
 from services.automation_service import AutomationService
 from services.faq_service import FAQService
 from services.pms_service import PMSService
@@ -23,11 +24,13 @@ class CommandRegistry:
         permissions: PermissionService,
         automation: AutomationService | None = None,
         faq: FAQService | None = None,
+        audit: AuditService | None = None,
     ) -> None:
         self.pms = pms
         self.permissions = permissions
         self.automation = automation
         self.faq = faq or FAQService()
+        self.audit = audit or AuditService()
         self._commands = self._build_commands()
 
     def _build_commands(self) -> dict[str, CommandDefinition]:
@@ -62,18 +65,34 @@ class CommandRegistry:
     def execute(self, identity: Identity, request: CommandRequest, *, confirmed: bool = False) -> CommandResult:
         command = self.get(request.name)
         if command is None:
-            return CommandResult(False, f"Unknown command: {request.name}", command=request.name)
+            result = CommandResult(False, f"Unknown command: {request.name}", command=request.name)
+            self.audit.record(identity, request.name, "UNKNOWN", False, parameters=request.parameters, details=result.message)
+            return result
         if not self.permissions.can(identity, command.permission):
-            return CommandResult(False, "You are not authorized to perform this action.", command=command.name)
+            result = CommandResult(False, "You are not authorized to perform this action.", command=command.name)
+            self.audit.record(identity, command.name, command.operation_type.value, False, parameters=request.parameters, details="permission_denied")
+            return result
         if command.confirmation == ConfirmationPolicy.REQUIRED and not confirmed:
-            return CommandResult(False, f"Confirmation required before executing {command.name}.", command=command.name)
+            result = CommandResult(False, f"Confirmation required before executing {command.name}.", command=command.name)
+            self.audit.record(identity, command.name, command.operation_type.value, False, parameters=request.parameters, details="confirmation_required")
+            return result
         try:
-            result = self._dispatch(command.name, request.parameters)
-            return CommandResult(True, self._format_message(command.name, result), result, command.name)
+            result_data = self._dispatch(command.name, request.parameters)
+            result = CommandResult(True, self._format_message(command.name, result_data), result_data, command.name)
+            self.audit.record(identity, command.name, command.operation_type.value, True, parameters=request.parameters)
+            return result
         except (ValueError, KeyError) as exc:
-            return CommandResult(False, str(exc), command=command.name)
+            result = CommandResult(False, str(exc), command=command.name)
+            self.audit.record(identity, command.name, command.operation_type.value, False, parameters=request.parameters, details=str(exc))
+            return result
+        except (TimeoutError, ConnectionError) as exc:
+            result = CommandResult(False, "The PMS is temporarily unavailable. Please try again.", command=command.name)
+            self.audit.record(identity, command.name, command.operation_type.value, False, parameters=request.parameters, details=str(exc))
+            return result
         except Exception:
-            return CommandResult(False, "The requested operation could not be completed.", command=command.name)
+            result = CommandResult(False, "The requested operation could not be completed.", command=command.name)
+            self.audit.record(identity, command.name, command.operation_type.value, False, parameters=request.parameters, details="internal_error")
+            return result
 
     def _dispatch(self, name: str, params: dict[str, Any]) -> Any:
         if name == "HELP":
