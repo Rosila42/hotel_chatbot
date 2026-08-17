@@ -29,8 +29,8 @@ jobs:
           python -m pip install -r requirements-v2.txt
           python -m pip install pyinstaller
 
-      - name: Run tests
-        run: python -m pytest -q
+      - name: Run V2 tests only
+        run: python -m pytest tests -q
 
       - name: Build bundled executable
         run: |
