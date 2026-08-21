@@ -14,11 +14,7 @@ from models.command_params import (
     RoomStatusParams,
     SearchGuestParams,
 )
-from models.commands import (
-    CommandDefinition,
-    ConfirmationPolicy,
-    OperationType,
-)
+from models.commands import CommandDefinition, ConfirmationPolicy, OperationType
 from core.permissions import Identity, PermissionService
 
 
@@ -106,3 +102,6 @@ class CommandRegistry:
 
     def all(self) -> tuple[CommandDefinition, ...]:
         return tuple(self._commands.values())
+
+    def names_for(self, identity: Identity) -> list[str]:
+        return [command.name for command in self.list_for(identity)]
