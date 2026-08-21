@@ -20,7 +20,7 @@ def test_registry_contains_complete_v1_catalog():
     registry = CommandRegistry(permissions)
     names = {command.name for command in registry.all()}
 
-    assert len(names) == 18
+    assert len(names) == 19
     assert "GET_ARRIVALS" in names
     assert "CREATE_INCIDENT" in names
     assert "RUN_AUTOMATION" in names
