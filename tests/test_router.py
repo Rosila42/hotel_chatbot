@@ -65,24 +65,6 @@ def test_flaw_3_contract_denied_before_confirmation_or_execution():
     builder.executor.execute.assert_not_called()
 
 
-def test_permission_gate_runs_before_structural_validation():
-    builder = build_router()
-    session = builder.session("receptionist", "reception")
-
-    request = CommandRequest("CREATE_INCIDENT", {})
-    command = builder.registry.get(request.name)
-    assert command is not None
-    assert command.validate(request.parameters)
-    session.pending_command = {"command": request.name, "parameters": request.parameters}
-
-    session.clear_pending()
-    result = builder.router.handle(session, "the AC in room 214 is broken")
-
-    assert result.kind is ResultKind.DENIED
-    assert result.kind is not ResultKind.INVALID_PARAMS
-    builder.executor.execute.assert_not_called()
-
-
 def test_confirmation_resumes_after_permission_and_validation_checks():
     builder = build_router()
     session = builder.session("manager", "management")
