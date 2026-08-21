@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -11,14 +12,7 @@ class EmptyParams(BaseModel):
 class SearchGuestParams(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str | None = Field(default=None, min_length=1)
-    reservation_id: str | None = Field(default=None, min_length=1)
-
-    @model_validator(mode="after")
-    def require_lookup_criterion(self) -> "SearchGuestParams":
-        if not self.name and not self.reservation_id:
-            raise ValueError("at least one lookup criterion is required")
-        return self
+    name: str = Field(min_length=1)
 
 
 class GetReservationParams(BaseModel):
