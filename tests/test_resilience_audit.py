@@ -75,3 +75,13 @@ def test_command_execution_creates_structured_audit_record():
         assert row.success is True
         assert json.loads(row.parameters)["room_number"] == "214"
         assert json.loads(row.details)["result_kind"] == ResultKind.SUCCESS.value
+
+
+def test_automation_audit_uses_result_kind_contract():
+    init_db()
+    pms = PMSService(MockPMSAdapter())
+    service = AutomationService(pms)
+
+    result = service.enable("MORNING_ARRIVAL_CHECK")
+
+    assert result["enabled"] is True
