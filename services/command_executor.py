@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Any
+from typing import Any, Callable
 
 from core.permissions import Identity
 from models.commands import CommandDefinition, CommandRequest, CommandResult, ResultKind
@@ -22,12 +22,14 @@ class CommandExecutor:
         faq: FAQService | None = None,
         audit: AuditService | None = None,
         formatter: ResponseFormatter | None = None,
+        help_provider: Callable[[Identity], list[str]] | None = None,
     ) -> None:
         self.pms = pms
         self.automation = automation
         self.faq = faq or FAQService()
         self.audit = audit or AuditService()
         self.formatter = formatter or ResponseFormatter()
+        self.help_provider = help_provider
 
     def execute(
         self,
@@ -36,7 +38,7 @@ class CommandExecutor:
         command: CommandDefinition,
     ) -> CommandResult:
         try:
-            result_data = self._dispatch(command.name, request.parameters)
+            result_data = self._dispatch(identity, command.name, request.parameters)
             result = CommandResult(
                 ResultKind.SUCCESS,
                 self.formatter.format(command.name, result_data),
@@ -86,9 +88,9 @@ class CommandExecutor:
             )
         )
 
-    def _dispatch(self, name: str, params: dict[str, Any]) -> Any:
+    def _dispatch(self, identity: Identity, name: str, params: dict[str, Any]) -> Any:
         if name == "HELP":
-            return []
+            return self.help_provider(identity) if self.help_provider else []
         if name == "GET_SYSTEM_STATUS":
             return {
                 "pms": "available",
