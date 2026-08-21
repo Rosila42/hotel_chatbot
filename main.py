@@ -17,16 +17,22 @@ from core.router import ChatRouter
 from integrations.pms.mock_adapter import MockPMSAdapter
 from services.automation_service import AutomationService
 from services.automation_worker import AutomationWorker
+from services.command_executor import CommandExecutor
 from services.pms_service import PMSService
 from services.session_repository import (
-    SessionRepository, SessionNotFound, SessionAccessDenied, CorruptedSessionState
+    CorruptedSessionState,
+    SessionAccessDenied,
+    SessionNotFound,
+    SessionRepository,
 )
 from storage import get_db, init_db
+
 
 def _application_root() -> Path:
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
         return Path(sys._MEIPASS)
     return Path(__file__).resolve().parent
+
 
 ROOT = _application_root()
 WEB_DIR = ROOT / "web"
@@ -35,39 +41,42 @@ _pms = PMSService(MockPMSAdapter())
 _permissions = PermissionService()
 _automation = AutomationService(_pms)
 _commands = CommandRegistry(_permissions)
-_executor = CommandExecutor(_pms, _automation)
-_router = ChatRouter(_commands)
+_executor = CommandExecutor(
+    _pms,
+    _automation,
+    help_provider=_commands.names_for,
+)
+_router = ChatRouter(_commands, _executor)
 _worker = AutomationWorker(_automation)
-_router = ChatRouter(_commands, _executor, _permissions)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup logic
     try:
         init_db()
         _worker.start()
         _worker.schedule_morning_arrival_check()
     except Exception:
-        # Ensure worker is stopped if startup fails before yield
-        if hasattr(_worker, "stop"):
-            _worker.stop()
-        raise
-        
-    yield
-    
-    # Shutdown logic
-    if hasattr(_worker, "stop"):
         _worker.stop()
+        raise
+
+    yield
+
+    _worker.stop()
+
 
 app = FastAPI(title="Hotel PMS Chatbot V2", version="0.1.0", lifespan=lifespan)
+
 
 @app.get("/")
 def root() -> RedirectResponse:
     return RedirectResponse(url="/app/")
 
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(
@@ -76,19 +85,17 @@ def chat(
     db: Session = Depends(get_db),
 ) -> ChatResponse:
     session_repo = SessionRepository(db)
-    
+
     try:
-        session = session_repo.load_or_create_session(
-            identity, request.session_id, request.shift
-        )
+        session = session_repo.load_or_create_session(identity, request.session_id, request.shift)
         session_repo.add_message(session.session_id, "user", request.message)
 
         result = _router.handle(session, request.message)
-        
+
         session_repo.update_session_state(session)
         session_repo.add_message(session.session_id, "assistant", result.message)
-        
-        # Single transactional commit for the entire request
+
+        # Single transactional commit for session state and transcript persistence.
         session_repo.commit()
     except SessionNotFound:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -105,8 +112,10 @@ def chat(
         data=result.data,
     )
 
+
 @app.get("/capabilities")
 def capabilities(identity: Identity = Depends(authenticate)) -> dict[str, list[str]]:
-    return {"commands": [command.name for command in _commands.list_for(identity)]}
+    return {"commands": _commands.names_for(identity)}
+
 
 app.mount("/app", StaticFiles(directory=WEB_DIR, html=True), name="web")

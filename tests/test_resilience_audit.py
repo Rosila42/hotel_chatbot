@@ -5,9 +5,11 @@ import json
 from core.commands import CommandRegistry
 from core.permissions import Identity, PermissionService
 from integrations.pms.mock_adapter import MockPMSAdapter
-from models.commands import CommandRequest
-from services.pms_service import PMSService
+from models.commands import CommandRequest, ResultKind
+from services.audit_service import AuditService
 from services.automation_service import AutomationService
+from services.command_executor import CommandExecutor
+from services.pms_service import PMSService
 from storage import AuditRecord, SessionLocal, init_db
 
 
@@ -44,16 +46,42 @@ def test_pms_write_is_not_retried():
     assert adapter.calls == 1
 
 
-def test_command_execution_creates_audit_record():
+def test_command_execution_creates_structured_audit_record():
     init_db()
-    registry = CommandRegistry(PMSService(MockPMSAdapter()), PermissionService(), AutomationService(PMSService(MockPMSAdapter())))
+    pms = PMSService(MockPMSAdapter())
+    permissions = PermissionService()
+    registry = CommandRegistry(permissions)
+    executor = CommandExecutor(pms, AutomationService(pms), audit=AuditService())
     identity = Identity("audit-user", "housekeeper", "housekeeping")
-    result = registry.execute(identity, CommandRequest("MARK_ROOM_CLEAN", {"room_number": "214"}))
-    assert result.success
+    command = registry.get("MARK_ROOM_CLEAN")
+
+    assert command is not None
+    result = executor.execute(
+        identity,
+        CommandRequest("MARK_ROOM_CLEAN", {"room_number": "214"}),
+        command,
+    )
+    assert result.kind is ResultKind.SUCCESS
 
     with SessionLocal() as db:
-        row = db.query(AuditRecord).filter(AuditRecord.user_id == "audit-user").order_by(AuditRecord.id.desc()).first()
+        row = (
+            db.query(AuditRecord)
+            .filter(AuditRecord.user_id == "audit-user")
+            .order_by(AuditRecord.id.desc())
+            .first()
+        )
         assert row is not None
         assert row.command == "MARK_ROOM_CLEAN"
         assert row.success is True
         assert json.loads(row.parameters)["room_number"] == "214"
+        assert json.loads(row.details)["result_kind"] == ResultKind.SUCCESS.value
+
+
+def test_automation_audit_uses_result_kind_contract():
+    init_db()
+    pms = PMSService(MockPMSAdapter())
+    service = AutomationService(pms)
+
+    result = service.enable("MORNING_ARRIVAL_CHECK")
+
+    assert result["enabled"] is True

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from json import dumps
 from typing import Any
 
+from models.commands import ResultKind
 from services.audit_service import AuditService
 from services.pms_service import PMSService
 from storage import AutomationDefinitionRecord, AutomationExecutionRecord, SessionLocal
@@ -53,14 +54,14 @@ class AutomationService:
         record = self._record(automation_id)
         record.enabled = True
         result = self._save_status(record)
-        AuditService.record_system("ENABLE_AUTOMATION", "AUTOMATION", True, details=result)
+        AuditService.record_system("ENABLE_AUTOMATION", "AUTOMATION", ResultKind.SUCCESS, details=result)
         return result
 
     def disable(self, automation_id: str) -> dict[str, Any]:
         record = self._record(automation_id)
         record.enabled = False
         result = self._save_status(record)
-        AuditService.record_system("DISABLE_AUTOMATION", "AUTOMATION", True, details=result)
+        AuditService.record_system("DISABLE_AUTOMATION", "AUTOMATION", ResultKind.SUCCESS, details=result)
         return result
 
     def status(self, automation_id: str) -> dict[str, Any]:
@@ -72,14 +73,18 @@ class AutomationService:
             raise ValueError(f"Automation {automation_id} is not implemented")
         try:
             rooms = self.pms.get_room_status(filter_name="not_ready_arrivals")
-            result = {"automation_id": automation_id, "status": "COMPLETED", "rooms_requiring_attention": [r.room_number for r in rooms]}
+            result = {
+                "automation_id": automation_id,
+                "status": "COMPLETED",
+                "rooms_requiring_attention": [r.room_number for r in rooms],
+            }
             self._record_execution(automation_id, "COMPLETED", result)
-            AuditService.record_system("RUN_AUTOMATION", "AUTOMATION", True, details=result)
+            AuditService.record_system("RUN_AUTOMATION", "AUTOMATION", ResultKind.SUCCESS, details=result)
             return result
         except Exception as exc:
             result = {"automation_id": automation_id, "status": "FAILED", "error": str(exc)}
             self._record_execution(automation_id, "FAILED", result)
-            AuditService.record_system("RUN_AUTOMATION", "AUTOMATION", False, details=result)
+            AuditService.record_system("RUN_AUTOMATION", "AUTOMATION", ResultKind.FAILED, details=result)
             return result
 
     def history(self, automation_id: str) -> list[dict[str, Any]]:
