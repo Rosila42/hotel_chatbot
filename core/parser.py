@@ -37,13 +37,12 @@ class DeterministicParser:
         if not normalized:
             return None
 
-        # High-confidence exact/system intents.
         if normalized in {"help", "what can you do", "what can you help with", "commands"}:
             return CommandRequest("HELP")
         if normalized in {"status", "system status", "what is the system status", "is the system up"}:
             return CommandRequest("GET_SYSTEM_STATUS")
 
-        # Automation recognition must happen before generic arrival/departure parsing.
+        # Known automation names take precedence over generic arrival/departure words.
         automation_id = self._automation_id(normalized)
         if automation_id:
             if self._has_any(normalized, "list", "show", "available") and "automation" in normalized:
@@ -59,14 +58,34 @@ class DeterministicParser:
             if "status" in normalized:
                 return CommandRequest("GET_AUTOMATION_STATUS", {"automation_id": automation_id})
 
+        generic_automation_id = self._extract_automation_id(text)
+        if generic_automation_id:
+            if self._has_any(normalized, "enable", "activate", "turn on"):
+                return CommandRequest("ENABLE_AUTOMATION", {"automation_id": generic_automation_id})
+            if self._has_any(normalized, "disable", "deactivate", "turn off"):
+                return CommandRequest("DISABLE_AUTOMATION", {"automation_id": generic_automation_id})
+            if self._has_any(normalized, "run", "execute", "start"):
+                return CommandRequest("RUN_AUTOMATION", {"automation_id": generic_automation_id})
+            if "history" in normalized:
+                return CommandRequest("GET_AUTOMATION_HISTORY", {"automation_id": generic_automation_id})
+            if "status" in normalized:
+                return CommandRequest("GET_AUTOMATION_STATUS", {"automation_id": generic_automation_id})
+
         if "automation" in normalized and self._has_any(normalized, "list", "show", "available"):
             return CommandRequest("LIST_AUTOMATIONS")
 
-        # Explicit incident listing comes before incident creation.
+        # Incident reads must precede incident writes.
         if "incidents" in normalized and self._has_any(normalized, "list", "show", "view", "get", "open"):
             status = "OPEN" if self._has_any(normalized, "open", "unresolved", "active") else None
             params = {"status": status} if status else {}
+            room = self._extract_room_number(text)
+            if room:
+                params["room_number"] = room
             return CommandRequest("GET_INCIDENTS", params)
+
+        incident_id = self._extract_incident_id(text)
+        if incident_id and self._has_any(normalized, "resolve incident", "close incident", "resolve issue", "close issue"):
+            return CommandRequest("RESOLVE_INCIDENT", {"incident_id": incident_id})
 
         # Date-aware arrival/departure interpretation.
         if self._mentions_arrivals(normalized):
@@ -74,13 +93,12 @@ class DeterministicParser:
         if self._mentions_departures(normalized):
             return CommandRequest("GET_DEPARTURES", {"date": self._requested_date(normalized).isoformat()})
 
-        # Guest search: accept both "search guest Maria" and "find Maria" forms.
         if self._mentions_guest_search(normalized):
             name = self._extract_guest_name(text)
             if name:
                 return CommandRequest("SEARCH_GUEST", {"name": name})
 
-        # Reservation lookup supports both reservation and booking vocabulary.
+        # Reservation lookup supports reservation IDs and guest names.
         if "reservation" in normalized or "booking" in normalized:
             reservation_id = self._extract(
                 text,
@@ -94,8 +112,7 @@ class DeterministicParser:
 
         room = self._extract_room_number(text)
 
-        # Explicit incident creation must beat a generic room-state word such as
-        # "dirty" while passive questions like "is room 214 dirty?" remain reads.
+        # Explicit writes take precedence over passive room-state language.
         if self._mentions_incident_creation(normalized):
             incident_type = (
                 "HOUSEKEEPING"
@@ -111,14 +128,22 @@ class DeterministicParser:
                 },
             )
 
-        # Room mutation phrases.
         if room and (
             self._has_any(normalized, "mark clean", "marked clean", "set clean", "make clean", "clean room")
             or ("clean" in normalized and self._has_any(normalized, "mark", "set", "make"))
         ):
             return CommandRequest("MARK_ROOM_CLEAN", {"room_number": room})
 
-        # Room state/status questions.
+        # Allow filtered room-set questions as well as single-room status.
+        if self._has_any(normalized, "not ready", "not-ready", "dirty rooms", "cleaning rooms", "available rooms"):
+            filter_name = (
+                "not_ready" if self._has_any(normalized, "not ready", "not-ready")
+                else "dirty" if "dirty rooms" in normalized
+                else "cleaning" if "cleaning rooms" in normalized
+                else "available"
+            )
+            return CommandRequest("GET_ROOM_STATUS", {"filter": filter_name})
+
         if room and self._has_any(
             normalized,
             "status",
@@ -133,7 +158,6 @@ class DeterministicParser:
         ):
             return CommandRequest("GET_ROOM_STATUS", {"room_number": room})
 
-        # Operational reporting aliases.
         if self._has_any(
             normalized,
             "operational summary",
@@ -145,7 +169,6 @@ class DeterministicParser:
         ):
             return CommandRequest("GET_OPERATIONAL_SUMMARY", {"date": self._requested_date(normalized).isoformat()})
 
-        # FAQ aliases. This remains a text-search request, not a generated answer.
         if self._mentions_faq(normalized):
             return CommandRequest("FAQ_SEARCH", {"query": text})
 
@@ -157,92 +180,40 @@ class DeterministicParser:
 
     @staticmethod
     def _mentions_arrivals(text: str) -> bool:
-        return any(
-            phrase in text
-            for phrase in (
-                "arrival",
-                "arrivals",
-                "arriving",
-                "check in",
-                "checking in",
-                "check-ins",
-                "check ins",
-                "expected guests",
-            )
-        )
+        return any(phrase in text for phrase in (
+            "arrival", "arrivals", "arriving", "check in", "checking in",
+            "check-ins", "check ins", "expected guests",
+        ))
 
     @staticmethod
     def _mentions_departures(text: str) -> bool:
-        return any(
-            phrase in text
-            for phrase in (
-                "departure",
-                "departures",
-                "leaving",
-                "who is leaving",
-                "check out",
-                "checking out",
-                "check-outs",
-                "check outs",
-                "leaving guests",
-            )
-        )
+        return any(phrase in text for phrase in (
+            "departure", "departures", "leaving", "who is leaving", "check out",
+            "checking out", "check-outs", "check outs", "leaving guests",
+        ))
 
     @staticmethod
     def _mentions_guest_search(text: str) -> bool:
-        return any(
-            phrase in text
-            for phrase in (
-                "search guest",
-                "find guest",
-                "look up guest",
-                "lookup guest",
-                "search for guest",
-                "find the guest",
-                "look up the guest",
-            )
-        ) or bool(re.search(r"^(?:find|search|lookup|look up)\s+[A-Za-z]", text))
+        return any(phrase in text for phrase in (
+            "search guest", "find guest", "look up guest", "lookup guest",
+            "search for guest", "find the guest", "look up the guest",
+        )) or bool(re.search(r"^(?:find|search|lookup|look up)\s+[A-Za-z]", text))
 
     @staticmethod
     def _mentions_incident_creation(text: str) -> bool:
-        return any(
-            phrase in text
-            for phrase in (
-                "create incident",
-                "report incident",
-                "report a problem",
-                "report an issue",
-                "report a dirty room",
-                "report dirty room",
-                "broken",
-                "not working",
-                "doesn't work",
-                "does not work",
-                "malfunction",
-                "problem with",
-                "issue with",
-            )
-        )
+        return any(phrase in text for phrase in (
+            "create incident", "report incident", "report a problem", "report an issue",
+            "report a dirty room", "report dirty room", "broken", "not working",
+            "doesn't work", "does not work", "malfunction", "problem with", "issue with",
+        ))
 
     @staticmethod
     def _mentions_faq(text: str) -> bool:
-        return any(
-            phrase in text
-            for phrase in (
-                "breakfast",
-                "checkout time",
-                "check-out time",
-                "check out time",
-                "check-in time",
-                "check in time",
-                "wifi",
-                "wi-fi",
-                "internet",
-                "hotel policy",
-                "cancellation policy",
-                "parking",
-            )
-        )
+        return any(phrase in text for phrase in (
+            "breakfast", "checkout time", "check-out time", "check out time",
+            "check-in time", "check in time", "wifi", "wi-fi", "internet",
+            "hotel policy", "cancellation policy", "parking",
+        ))
 
     def _requested_date(self, text: str) -> date:
         today = self._today_provider()
@@ -250,7 +221,6 @@ class DeterministicParser:
             return today + timedelta(days=1)
         if "yesterday" in text:
             return today - timedelta(days=1)
-
         match = re.search(r"\b(20\d{2}-\d{2}-\d{2})\b", text)
         if match:
             try:
@@ -273,6 +243,14 @@ class DeterministicParser:
     @staticmethod
     def _extract_room_number(text: str) -> str | None:
         return DeterministicParser._extract(text, r"\broom\s*(?:number\s*)?#?([0-9]+)\b")
+
+    @staticmethod
+    def _extract_incident_id(text: str) -> str | None:
+        return DeterministicParser._extract(text, r"(?:incident|issue|ticket)\s*(?:number|no\.?|id)?\s*#?([a-z0-9-]+)")
+
+    @staticmethod
+    def _extract_automation_id(text: str) -> str | None:
+        return DeterministicParser._extract(text, r"(?:automation|workflow)\s*(?:id)?\s*[:#-]?\s*([A-Za-z0-9_-]+)")
 
     @staticmethod
     def _extract_guest_name(text: str) -> str | None:
