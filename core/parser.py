@@ -162,6 +162,7 @@ class DeterministicParser:
             for phrase in (
                 "arrival",
                 "arrivals",
+                "arriving",
                 "check in",
                 "checking in",
                 "check-ins",
@@ -177,6 +178,8 @@ class DeterministicParser:
             for phrase in (
                 "departure",
                 "departures",
+                "leaving",
+                "who is leaving",
                 "check out",
                 "checking out",
                 "check-outs",
