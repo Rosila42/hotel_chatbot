@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import ast
-from datetime import date
 from pathlib import Path
+from threading import Lock
 
 import pytest
 from sqlalchemy import create_engine
@@ -10,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from core.permissions import Identity
 from integrations.pms.mock_adapter import MockPMSAdapter
-from models.commands import CommandRequest
+from models.commands import ResultKind
 from models.pms import RoomStatus
 from services.audit_service import AuditEvent, AuditService
 from services.automation_service import (
@@ -21,11 +20,11 @@ from services.automation_service import (
 )
 from services.pms_service import PMSService
 from services.session_repository import SessionRepository
-from storage import Base, ChatSessionRecord
+from storage import AuditRecord, AutomationDefinitionRecord, Base, ChatSessionRecord
 
 
 @pytest.fixture()
-def isolated_session_factory(tmp_path, monkeypatch):
+def isolated_session_factory(tmp_path):
     database = tmp_path / "hardening.db"
     engine = create_engine(f"sqlite:///{database}", connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
@@ -36,6 +35,7 @@ def test_confirmation_claim_is_single_use(isolated_session_factory):
     factory = isolated_session_factory
     identity = Identity("manager-1", "manager", "management")
     session_id = "hardening-session"
+    parameters = {"room_number": "214", "incident_type": "MAINTENANCE", "description": "AC"}
 
     with factory() as db:
         db.add(
@@ -52,45 +52,35 @@ def test_confirmation_claim_is_single_use(isolated_session_factory):
         db.commit()
 
     with factory() as first, factory() as second:
-        first_result = SessionRepository(first).claim_pending_action(
-            session_id,
-            "CREATE_INCIDENT",
-            {"room_number": "214", "incident_type": "MAINTENANCE", "description": "AC"},
-        )
-        second_result = SessionRepository(second).claim_pending_action(
-            session_id,
-            "CREATE_INCIDENT",
-            {"room_number": "214", "incident_type": "MAINTENANCE", "description": "AC"},
-        )
+        first_result = SessionRepository(first).claim_pending_action(session_id, "CREATE_INCIDENT", parameters)
+        second_result = SessionRepository(second).claim_pending_action(session_id, "CREATE_INCIDENT", parameters)
 
     assert first_result is True
     assert second_result is False
 
 
 def test_request_scoped_audit_stays_in_supplied_transaction(isolated_session_factory):
-    factory = isolated_session_factory
     identity = Identity("manager-1", "manager", "management")
 
-    with factory() as db:
+    with isolated_session_factory() as db:
         AuditService.record(
             AuditEvent(
                 identity=identity,
                 command="HELP",
                 operation_type="READ",
-                result_kind=__import__("models.commands", fromlist=["ResultKind"]).ResultKind.SUCCESS,
+                result_kind=ResultKind.SUCCESS,
             ),
             db=db,
         )
-        assert db.query(type(__import__("storage", fromlist=["AuditRecord"]).AuditRecord)).count() == 1
+        assert db.query(AuditRecord).count() == 1
         db.rollback()
 
-    with factory() as db:
-        assert db.query(type(__import__("storage", fromlist=["AuditRecord"]).AuditRecord)).count() == 0
+    with isolated_session_factory() as db:
+        assert db.query(AuditRecord).count() == 0
 
 
 def test_not_ready_filter_matches_parser_output():
-    pms = PMSService(MockPMSAdapter())
-    rooms = pms.get_room_status(filter_name="not_ready")
+    rooms = PMSService(MockPMSAdapter()).get_room_status(filter_name="not_ready")
 
     assert rooms
     assert all(room.status != RoomStatus.READY for room in rooms)
@@ -98,28 +88,37 @@ def test_not_ready_filter_matches_parser_output():
 
 def test_mock_incident_ids_are_unique():
     adapter = MockPMSAdapter()
-    ids = {adapter.create_incident("214", "MAINTENANCE", f"problem {index}").incident_id for index in range(100)}
+    ids = {
+        adapter.create_incident("214", "MAINTENANCE", f"problem {index}").incident_id
+        for index in range(100)
+    }
 
     assert len(ids) == 100
 
 
-def test_disabled_automation_is_rejected(monkeypatch):
+def _service_for_automation_test(monkeypatch, *, enabled: bool, lock: Lock | None = None) -> AutomationService:
     service = object.__new__(AutomationService)
     service.pms = PMSService(MockPMSAdapter())
-    service._run_locks = {"MORNING_ARRIVAL_CHECK": __import__("threading").Lock()}
-    monkeypatch.setattr(service, "_record", lambda _: __import__("storage", fromlist=["AutomationDefinitionRecord"]).AutomationDefinitionRecord(automation_id="MORNING_ARRIVAL_CHECK", enabled=False))
+    service._run_locks = {"MORNING_ARRIVAL_CHECK": lock or Lock()}
+    monkeypatch.setattr(
+        service,
+        "_record",
+        lambda _: AutomationDefinitionRecord(automation_id="MORNING_ARRIVAL_CHECK", enabled=enabled),
+    )
+    return service
+
+
+def test_disabled_automation_is_rejected(monkeypatch):
+    service = _service_for_automation_test(monkeypatch, enabled=False)
 
     with pytest.raises(AutomationDisabledError):
         service.run("MORNING_ARRIVAL_CHECK")
 
 
 def test_automation_overlap_is_rejected(monkeypatch):
-    service = object.__new__(AutomationService)
-    service.pms = PMSService(MockPMSAdapter())
-    lock = __import__("threading").Lock()
+    lock = Lock()
     lock.acquire()
-    service._run_locks = {"MORNING_ARRIVAL_CHECK": lock}
-    monkeypatch.setattr(service, "_record", lambda _: __import__("storage", fromlist=["AutomationDefinitionRecord"]).AutomationDefinitionRecord(automation_id="MORNING_ARRIVAL_CHECK", enabled=True))
+    service = _service_for_automation_test(monkeypatch, enabled=True, lock=lock)
 
     try:
         with pytest.raises(AutomationBusyError):
@@ -129,17 +128,10 @@ def test_automation_overlap_is_rejected(monkeypatch):
 
 
 def test_automation_failure_is_not_returned_as_success(monkeypatch):
-    service = object.__new__(AutomationService)
-    service.pms = PMSService(MockPMSAdapter())
-    service._run_locks = {"MORNING_ARRIVAL_CHECK": __import__("threading").Lock()}
-    monkeypatch.setattr(service, "_record", lambda _: __import__("storage", fromlist=["AutomationDefinitionRecord"]).AutomationDefinitionRecord(automation_id="MORNING_ARRIVAL_CHECK", enabled=True))
+    service = _service_for_automation_test(monkeypatch, enabled=True)
     monkeypatch.setattr(service, "_record_execution", lambda *args, **kwargs: None)
     monkeypatch.setattr(AuditService, "record_system", lambda *args, **kwargs: None)
-
-    def fail(*args, **kwargs):
-        raise RuntimeError("pms unavailable")
-
-    monkeypatch.setattr(service.pms, "get_room_status", fail)
+    monkeypatch.setattr(service.pms, "get_room_status", lambda **kwargs: (_ for _ in ()).throw(RuntimeError("pms unavailable")))
 
     with pytest.raises(AutomationExecutionError) as exc_info:
         service.run("MORNING_ARRIVAL_CHECK")
@@ -158,7 +150,6 @@ def test_launcher_disables_terminal_and_network_bind_is_opt_in():
 
 def test_shift_change_clears_transcript():
     javascript = Path("web/app.js").read_text(encoding="utf-8")
-    tree = ast.parse("x = 1")
-    assert tree is not None
+
     assert "shift.addEventListener(\"change\"" in javascript
     assert "resetConversation(" in javascript
