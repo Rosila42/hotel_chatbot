@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from sqlalchemy.orm import Session
+
 from core.commands import CommandRegistry
 from core.parser import DeterministicParser, Parser
 from core.permissions import Identity
@@ -19,20 +21,22 @@ class ChatRouter:
     ) -> None:
         self.registry = registry
         self.executor = executor
-        # The parser is deliberately injected so future LLM parsing can implement the
-        # same contract without creating a second execution path around this router.
         self.parser = parser or DeterministicParser()
 
-    def handle(self, session: ChatSession, message: str) -> CommandResult:
+    def handle(
+        self,
+        session: ChatSession,
+        message: str,
+        *,
+        db: Session | None = None,
+    ) -> CommandResult:
         text = message.strip()
         if not text:
             return CommandResult(ResultKind.INVALID_PARAMS, "Please enter a request.")
 
         if session.pending_command:
-            return self._handle_pending(session, text)
+            return self._handle_pending(session, text, db=db)
 
-        # Parsing ends at CommandRequest. Authorization and every trusted policy gate
-        # remain exclusively in this router.
         request = self.parser.parse(text)
         if request is None:
             return CommandResult(
@@ -48,8 +52,7 @@ class ChatRouter:
                 command=request.name,
             )
 
-        # Gate 1: authorization. Do not validate parameters or reveal the command contract
-        # to an identity that is not permitted to use the command.
+        # Gate 1: authorization.
         if not self.registry.permissions.can(session.identity, command.permission):
             return CommandResult(
                 ResultKind.DENIED,
@@ -57,7 +60,7 @@ class ChatRouter:
                 command=command.name,
             )
 
-        # Gate 2: structural validation. No PMS/service I/O occurs here.
+        # Gate 2: structural validation.
         errors = command.validate(request.parameters)
         if errors:
             return CommandResult(
@@ -66,7 +69,7 @@ class ChatRouter:
                 command=command.name,
             )
 
-        # Gate 3: explicit confirmation for commands that require it.
+        # Gate 3: explicit confirmation.
         if command.confirmation == ConfirmationPolicy.REQUIRED:
             session.set_pending(command.name, request.parameters)
             return CommandResult(
@@ -76,9 +79,15 @@ class ChatRouter:
             )
 
         # Gate 4: execute only after all policy gates pass.
-        return self.executor.execute(session.identity, request, command)
+        return self.executor.execute(session.identity, request, command, db=db)
 
-    def _handle_pending(self, session: ChatSession, message: str) -> CommandResult:
+    def _handle_pending(
+        self,
+        session: ChatSession,
+        message: str,
+        *,
+        db: Session | None = None,
+    ) -> CommandResult:
         normalized = message.casefold()
         if normalized in {"cancel", "cancelled", "no", "abort"}:
             session.clear_pending()
@@ -103,8 +112,6 @@ class ChatRouter:
                 command=command_name,
             )
 
-        # Re-check authorization and validation at resume time. This prevents a stale
-        # pending action from executing after the user's effective capabilities change.
         if not self.registry.permissions.can(session.identity, command.permission):
             session.clear_pending()
             return CommandResult(
@@ -122,9 +129,33 @@ class ChatRouter:
                 command=command.name,
             )
 
-        session.clear_pending()
+        if db is not None:
+            if not self._claim_pending(db, session, command.name, parameters):
+                session.clear_pending()
+                return CommandResult(
+                    ResultKind.FAILED,
+                    "This confirmation was already consumed by another request.",
+                    command=command.name,
+                )
+        else:
+            session.clear_pending()
+
         return self.executor.execute(
             session.identity,
             CommandRequest(command.name, parameters),
             command,
+            db=db,
         )
+
+    @staticmethod
+    def _claim_pending(db: Session, session: ChatSession, command_name: str, parameters: dict) -> bool:
+        from services.session_repository import SessionRepository
+
+        claimed = SessionRepository(db).claim_pending_action(
+            session.session_id,
+            command_name,
+            parameters,
+        )
+        if claimed:
+            session.clear_pending()
+        return claimed
