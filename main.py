@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from api.auth import authenticate
 from api.schemas import ChatRequest, ChatResponse
 from core.commands import CommandRegistry
+from core.parser import DeterministicParser
 from core.permissions import Identity, PermissionService
 from core.router import ChatRouter
 from integrations.pms.mock_adapter import MockPMSAdapter
@@ -46,7 +47,9 @@ _executor = CommandExecutor(
     _automation,
     help_provider=_commands.names_for,
 )
-_router = ChatRouter(_commands, _executor)
+# Phase 2 keeps parsing replaceable while preserving one deterministic execution path.
+_parser = DeterministicParser()
+_router = ChatRouter(_commands, _executor, parser=_parser)
 _worker = AutomationWorker(_automation)
 
 
