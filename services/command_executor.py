@@ -8,10 +8,7 @@ from sqlalchemy.orm import Session
 from core.permissions import Identity
 from models.commands import CommandDefinition, CommandRequest, CommandResult, ResultKind
 from services.audit_service import AuditEvent, AuditService
-from services.automation_service import (
-    AutomationExecutionError,
-    AutomationService,
-)
+from services.automation_service import AutomationError, AutomationExecutionError, AutomationService
 from services.faq_service import FAQService
 from services.pms_service import PMSService
 from services.response_formatter import ResponseFormatter
@@ -58,10 +55,14 @@ class CommandExecutor:
             result = CommandResult(
                 ResultKind.FAILED,
                 "The automation could not be completed.",
-                getattr(exc, "details", None),
+                exc.details,
                 command.name,
             )
-            self._audit(identity, request, command, result, details=getattr(exc, "details", str(exc)), db=db)
+            self._audit(identity, request, command, result, details=exc.details, db=db)
+            return result
+        except AutomationError as exc:
+            result = CommandResult(ResultKind.FAILED, str(exc), command=command.name)
+            self._audit(identity, request, command, result, details=str(exc), db=db)
             return result
         except (ValueError, KeyError) as exc:
             result = CommandResult(ResultKind.INVALID_PARAMS, str(exc), command=command.name)
@@ -113,7 +114,7 @@ class CommandExecutor:
             return {
                 "pms": "available",
                 "chatbot": "available",
-                "ai": "configured" if False else "optional",
+                "ai": "optional",
                 "automation": "configured" if self.automation else "not configured",
             }
         if name == "SEARCH_GUEST":
