@@ -87,7 +87,7 @@ def test_parser_extracts_guest_name_after_guest_keyword():
     )
 
 
-def test_parser_accepts_booking_vocabulary():
+def test_parser_accepts_booking_vocabulary_and_preserves_case():
     assert build_parser().parse("booking ABC-123") == CommandRequest(
         "GET_RESERVATION", {"reservation_id": "ABC-123"}
     )
@@ -101,6 +101,12 @@ def test_parser_extracts_guest_name_for_reservation_lookup():
 
 def test_parser_accepts_room_status_questions():
     assert build_parser().parse("is room 214 ready?") == CommandRequest(
+        "GET_ROOM_STATUS", {"room_number": "214"}
+    )
+
+
+def test_parser_passive_dirty_room_question_remains_read_only():
+    assert build_parser().parse("room 214 is dirty") == CommandRequest(
         "GET_ROOM_STATUS", {"room_number": "214"}
     )
 
