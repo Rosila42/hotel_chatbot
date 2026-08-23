@@ -33,6 +33,12 @@ def test_parser_incident_list_is_not_misclassified_as_create_incident():
     assert request == CommandRequest("GET_INCIDENTS", {"status": "OPEN"})
 
 
+def test_parser_incident_list_can_filter_by_room():
+    request = build_parser().parse("show open incidents for room 214")
+
+    assert request == CommandRequest("GET_INCIDENTS", {"status": "OPEN", "room_number": "214"})
+
+
 def test_parser_create_incident_stays_a_command_request():
     request = build_parser().parse("The AC in room 214 is broken")
 
@@ -48,6 +54,16 @@ def test_parser_preserves_automation_precedence_over_arrival_language():
     assert request == CommandRequest(
         "RUN_AUTOMATION",
         {"automation_id": "MORNING_ARRIVAL_CHECK"},
+    )
+
+
+def test_parser_accepts_generic_automation_ids():
+    assert build_parser().parse("run automation NIGHT_AUDIT") == CommandRequest(
+        "RUN_AUTOMATION", {"automation_id": "NIGHT_AUDIT"}
+    )
+
+    assert build_parser().parse("show workflow NIGHT_AUDIT status") == CommandRequest(
+        "GET_AUTOMATION_STATUS", {"automation_id": "NIGHT_AUDIT"}
     )
 
 
@@ -105,6 +121,12 @@ def test_parser_accepts_room_status_questions():
     )
 
 
+def test_parser_accepts_room_set_filters():
+    assert build_parser().parse("which rooms are not ready?") == CommandRequest(
+        "GET_ROOM_STATUS", {"filter": "not_ready"}
+    )
+
+
 def test_parser_passive_dirty_room_question_remains_read_only():
     assert build_parser().parse("room 214 is dirty") == CommandRequest(
         "GET_ROOM_STATUS", {"room_number": "214"}
@@ -114,6 +136,12 @@ def test_parser_passive_dirty_room_question_remains_read_only():
 def test_parser_accepts_mark_room_clean_variants():
     assert build_parser().parse("please mark room 214 clean") == CommandRequest(
         "MARK_ROOM_CLEAN", {"room_number": "214"}
+    )
+
+
+def test_parser_resolves_incident_id():
+    assert build_parser().parse("resolve incident 42") == CommandRequest(
+        "RESOLVE_INCIDENT", {"incident_id": "42"}
     )
 
 
