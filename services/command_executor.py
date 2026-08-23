@@ -3,10 +3,12 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Callable
 
+from sqlalchemy.orm import Session
+
 from core.permissions import Identity
 from models.commands import CommandDefinition, CommandRequest, CommandResult, ResultKind
 from services.audit_service import AuditEvent, AuditService
-from services.automation_service import AutomationService
+from services.automation_service import AutomationError, AutomationExecutionError, AutomationService
 from services.faq_service import FAQService
 from services.pms_service import PMSService
 from services.response_formatter import ResponseFormatter
@@ -36,6 +38,8 @@ class CommandExecutor:
         identity: Identity,
         request: CommandRequest,
         command: CommandDefinition,
+        *,
+        db: Session | None = None,
     ) -> CommandResult:
         try:
             result_data = self._dispatch(identity, command.name, request.parameters)
@@ -45,11 +49,24 @@ class CommandExecutor:
                 result_data,
                 command.name,
             )
-            self._audit(identity, request, command, result)
+            self._audit(identity, request, command, result, db=db)
+            return result
+        except AutomationExecutionError as exc:
+            result = CommandResult(
+                ResultKind.FAILED,
+                "The automation could not be completed.",
+                exc.details,
+                command.name,
+            )
+            self._audit(identity, request, command, result, details=exc.details, db=db)
+            return result
+        except AutomationError as exc:
+            result = CommandResult(ResultKind.FAILED, str(exc), command=command.name)
+            self._audit(identity, request, command, result, details=str(exc), db=db)
             return result
         except (ValueError, KeyError) as exc:
             result = CommandResult(ResultKind.INVALID_PARAMS, str(exc), command=command.name)
-            self._audit(identity, request, command, result, details=str(exc))
+            self._audit(identity, request, command, result, details=str(exc), db=db)
             return result
         except (TimeoutError, ConnectionError) as exc:
             result = CommandResult(
@@ -57,7 +74,7 @@ class CommandExecutor:
                 "The PMS is temporarily unavailable. Please try again.",
                 command=command.name,
             )
-            self._audit(identity, request, command, result, details=str(exc))
+            self._audit(identity, request, command, result, details=str(exc), db=db)
             return result
         except Exception:
             result = CommandResult(
@@ -65,7 +82,7 @@ class CommandExecutor:
                 "The requested operation could not be completed.",
                 command=command.name,
             )
-            self._audit(identity, request, command, result, details="internal_error")
+            self._audit(identity, request, command, result, details="internal_error", db=db)
             return result
 
     def _audit(
@@ -76,6 +93,7 @@ class CommandExecutor:
         result: CommandResult,
         *,
         details: Any = None,
+        db: Session | None = None,
     ) -> None:
         self.audit.record(
             AuditEvent(
@@ -85,7 +103,8 @@ class CommandExecutor:
                 result_kind=result.kind,
                 parameters=request.parameters,
                 details=details,
-            )
+            ),
+            db=db,
         )
 
     def _dispatch(self, identity: Identity, name: str, params: dict[str, Any]) -> Any:
@@ -95,7 +114,7 @@ class CommandExecutor:
             return {
                 "pms": "available",
                 "chatbot": "available",
-                "ai": "not configured",
+                "ai": "optional",
                 "automation": "configured" if self.automation else "not configured",
             }
         if name == "SEARCH_GUEST":

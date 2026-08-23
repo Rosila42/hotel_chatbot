@@ -8,11 +8,24 @@ VENV_DIR="${VENV_DIR:-.venv}"
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-8000}"
 BROWSER_HOST="${BROWSER_HOST:-127.0.0.1}"
+ALLOW_INSECURE_NETWORK_DEMO="${ALLOW_INSECURE_NETWORK_DEMO:-0}"
 
 if [ ! -x "$VENV_DIR/bin/python" ]; then
   echo "V2 is not installed yet. Run: bash install_v2.sh" >&2
   exit 1
 fi
+
+case "$HOST" in
+  127.0.0.1|localhost|::1) ;;
+  *)
+    if [ "$ALLOW_INSECURE_NETWORK_DEMO" != "1" ]; then
+      echo "Refusing non-loopback bind ('$HOST') with demo authentication." >&2
+      echo "Use HOST=127.0.0.1 for local use, or explicitly set ALLOW_INSECURE_NETWORK_DEMO=1 after configuring a real network-safe authentication setup." >&2
+      exit 1
+    fi
+    echo "WARNING: network demo mode is enabled; the built-in demo bearer tokens are not suitable for untrusted networks." >&2
+    ;;
+esac
 
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"

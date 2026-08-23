@@ -6,7 +6,6 @@ from typing import Callable, TypeVar
 from integrations.pms.interface import PMSInterface
 from models.pms import IncidentStatus, OperationalSummary, RoomStatus
 
-
 T = TypeVar("T")
 
 
@@ -32,8 +31,6 @@ class PMSService:
 
     @staticmethod
     def _write(operation: Callable[[], T]) -> T:
-        # Writes are deliberately not retried automatically: repeating a non-idempotent
-        # PMS mutation can duplicate side effects when the first request actually succeeded.
         return operation()
 
     def search_guest(self, name: str):
@@ -61,6 +58,8 @@ class PMSService:
                 if room and room.status != RoomStatus.READY:
                     rooms.append(room)
             return rooms
+        if filter_name == "not_ready":
+            return self._read(lambda: [room for room in self.adapter.get_rooms() if room.status != RoomStatus.READY])
         canonical = {
             "available": RoomStatus.AVAILABLE,
             "occupied": RoomStatus.OCCUPIED,
