@@ -83,10 +83,10 @@ class DeterministicParser:
         # Reservation lookup supports both reservation and booking vocabulary.
         if "reservation" in normalized or "booking" in normalized:
             reservation_id = self._extract(
-                normalized,
+                text,
                 r"(?:reservation|booking)\s*(?:number|no\.?|id)?\s*#?([a-z0-9-]+)",
             )
-            if reservation_id and reservation_id not in {"for", "status", "details", "today", "tomorrow"}:
+            if reservation_id and reservation_id.casefold() not in {"for", "status", "details", "today", "tomorrow"}:
                 return CommandRequest("GET_RESERVATION", {"reservation_id": reservation_id})
             guest_name = self._extract_guest_name(text)
             if guest_name and self._has_any(normalized, "reservation", "booking"):
