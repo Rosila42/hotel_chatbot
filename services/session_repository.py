@@ -1,15 +1,26 @@
 from __future__ import annotations
 
 import json
+
+from sqlalchemy import update
 from sqlalchemy.orm import Session
+
 from core.permissions import Identity
 from core.session import ChatSession
 from storage import ChatMessageRecord, ChatSessionRecord
 
-# Domain-level exceptions (decoupled from FastAPI)
-class SessionNotFound(Exception): pass
-class SessionAccessDenied(Exception): pass
-class CorruptedSessionState(Exception): pass
+
+class SessionNotFound(Exception):
+    pass
+
+
+class SessionAccessDenied(Exception):
+    pass
+
+
+class CorruptedSessionState(Exception):
+    pass
+
 
 class SessionRepository:
     """Handles database persistence for ChatSessions and ChatMessages."""
@@ -30,7 +41,6 @@ class SessionRepository:
             if record.user_id != identity.user_id:
                 raise SessionAccessDenied("Session does not belong to authenticated user")
 
-            # Efficiently fetch the last 50 messages
             history_rows = (
                 self.db.query(ChatMessageRecord)
                 .filter(ChatMessageRecord.session_id == session_id)
@@ -38,7 +48,7 @@ class SessionRepository:
                 .limit(50)
                 .all()
             )
-            history_rows.reverse() # Restore chronological order
+            history_rows.reverse()
 
             session = ChatSession(
                 session_id=record.session_id,
@@ -47,10 +57,10 @@ class SessionRepository:
                 created_at=record.created_at,
             )
             session.history = [
-                {"role": row.role, "content": row.content} 
+                {"role": row.role, "content": row.content}
                 for row in history_rows
             ]
-            
+
             if record.pending_command:
                 try:
                     parameters = json.loads(record.pending_parameters or "{}")
@@ -59,7 +69,6 @@ class SessionRepository:
                 session.set_pending(record.pending_command, parameters)
             return session
 
-        # Create new session
         session = ChatSession.create(identity, shift=shift)
         self.db.add(
             ChatSessionRecord(
@@ -70,28 +79,50 @@ class SessionRepository:
                 shift=shift,
             )
         )
-        self.db.flush() # Flush to assign ID without committing transaction
+        self.db.flush()
         return session
 
     def add_message(self, session_id: str, role: str, content: str) -> None:
-        self.db.add(
-            ChatMessageRecord(session_id=session_id, role=role, content=content)
-        )
+        self.db.add(ChatMessageRecord(session_id=session_id, role=role, content=content))
 
     def update_session_state(self, session: ChatSession) -> None:
         record = self.db.get(ChatSessionRecord, session.session_id)
         if record is None:
             raise SessionNotFound("Session not found")
-        
+
         record.pending_command = None
         record.pending_parameters = None
-        
+
         if session.pending_command:
             record.pending_command = session.pending_command["command"]
-            record.pending_parameters = json.dumps(
-                session.pending_command["parameters"]
-            )
+            record.pending_parameters = json.dumps(session.pending_command["parameters"])
+
+    def claim_pending_action(
+        self,
+        session_id: str,
+        command_name: str,
+        parameters: dict,
+    ) -> bool:
+        """Atomically consume a pending action before executing its side effect.
+
+        The update is committed immediately so a concurrent request cannot observe the
+        same pending action and execute it twice. This is an optimistic compare-and-set
+        using the stored command and serialized parameters; it requires no schema change.
+        """
+        stored_parameters = json.dumps(parameters)
+        statement = (
+            update(ChatSessionRecord)
+            .where(ChatSessionRecord.session_id == session_id)
+            .where(ChatSessionRecord.pending_command == command_name)
+            .where(ChatSessionRecord.pending_parameters == stored_parameters)
+            .values(pending_command=None, pending_parameters=None)
+        )
+        result = self.db.execute(statement)
+        if result.rowcount != 1:
+            self.db.rollback()
+            return False
+        self.db.commit()
+        return True
 
     def commit(self) -> None:
-        """Commit the unit of work."""
         self.db.commit()
