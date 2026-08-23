@@ -28,12 +28,7 @@ class SessionRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def load_or_create_session(
-        self,
-        identity: Identity,
-        session_id: str | None,
-        shift: str | None,
-    ) -> ChatSession:
+    def load_or_create_session(self, identity: Identity, session_id: str | None, shift: str | None) -> ChatSession:
         if session_id:
             record = self.db.get(ChatSessionRecord, session_id)
             if record is None:
@@ -56,10 +51,7 @@ class SessionRepository:
                 shift=record.shift,
                 created_at=record.created_at,
             )
-            session.history = [
-                {"role": row.role, "content": row.content}
-                for row in history_rows
-            ]
+            session.history = [{"role": row.role, "content": row.content} for row in history_rows]
 
             if record.pending_command:
                 try:
@@ -92,23 +84,12 @@ class SessionRepository:
 
         record.pending_command = None
         record.pending_parameters = None
-
         if session.pending_command:
             record.pending_command = session.pending_command["command"]
             record.pending_parameters = json.dumps(session.pending_command["parameters"])
 
-    def claim_pending_action(
-        self,
-        session_id: str,
-        command_name: str,
-        parameters: dict,
-    ) -> bool:
-        """Atomically consume a pending action before executing its side effect.
-
-        The update is committed immediately so a concurrent request cannot observe the
-        same pending action and execute it twice. This is an optimistic compare-and-set
-        using the stored command and serialized parameters; it requires no schema change.
-        """
+    def claim_pending_action(self, session_id: str, command_name: str, parameters: dict) -> bool:
+        """Atomically consume a pending action before its side effect."""
         stored_parameters = json.dumps(parameters)
         statement = (
             update(ChatSessionRecord)
@@ -119,7 +100,8 @@ class SessionRepository:
         )
         result = self.db.execute(statement)
         if result.rowcount != 1:
-            self.db.rollback()
+            # No row was changed, so the transaction still contains the caller's
+            # uncommitted request messages. Leave them intact for the response audit.
             return False
         self.db.commit()
         return True
