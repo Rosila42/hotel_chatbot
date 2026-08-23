@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Generator
 
-from sqlalchemy import Boolean, DateTime, String, Text, create_engine
+from sqlalchemy import Boolean, DateTime, String, Text, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 
@@ -19,7 +19,28 @@ APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 DATABASE_PATH = APP_DATA_DIR / "hotel_chatbot_v2.db"
 DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False},
+)
+
+
+@event.listens_for(engine, "connect")
+def _configure_sqlite(dbapi_connection, connection_record) -> None:
+    """Harden SQLite for the single-process FastAPI runtime.
+
+    WAL allows readers to continue while a writer is active; busy_timeout gives
+    short concurrent writes a chance to wait instead of immediately failing with
+    "database is locked".
+    """
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=5000")
+    finally:
+        cursor.close()
+
+
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
