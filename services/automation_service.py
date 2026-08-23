@@ -49,9 +49,9 @@ class AutomationService:
     def __init__(self, pms: PMSService) -> None:
         self.pms = pms
         self._run_locks = {automation_id: Lock() for automation_id in TEMPLATES}
-        self._ensure_definitions()
 
-    def _ensure_definitions(self) -> None:
+    def ensure_definitions(self) -> None:
+        """Initialize persistent automation definitions during application startup."""
         from storage import init_db
 
         init_db()
@@ -95,8 +95,6 @@ class AutomationService:
         record = self._record(automation_id)
         if not record.enabled:
             raise AutomationDisabledError(f"Automation {automation_id} is disabled")
-        if automation_id not in TEMPLATES:
-            raise ValueError(f"Unknown automation: {automation_id}")
 
         lock = self._run_locks[automation_id]
         if not lock.acquire(blocking=False):
@@ -161,10 +159,7 @@ class AutomationService:
         with SessionLocal() as db:
             record = db.get(AutomationDefinitionRecord, source.automation_id)
             if record is None:
-                record = AutomationDefinitionRecord(
-                    automation_id=source.automation_id,
-                    enabled=source.enabled,
-                )
+                record = AutomationDefinitionRecord(automation_id=source.automation_id, enabled=source.enabled)
                 db.add(record)
             else:
                 record.enabled = source.enabled
@@ -186,11 +181,5 @@ class AutomationService:
     @staticmethod
     def _record_execution(automation_id: str, status: str, result: dict[str, Any]) -> None:
         with SessionLocal() as db:
-            db.add(
-                AutomationExecutionRecord(
-                    automation_id=automation_id,
-                    status=status,
-                    details=dumps(result),
-                )
-            )
+            db.add(AutomationExecutionRecord(automation_id=automation_id, status=status, details=dumps(result)))
             db.commit()
