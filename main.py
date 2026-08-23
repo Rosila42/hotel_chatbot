@@ -52,6 +52,7 @@ _worker = AutomationWorker(_automation)
 async def lifespan(app: FastAPI):
     try:
         init_db()
+        _automation.ensure_definitions()
         _worker.start()
         _worker.schedule_morning_arrival_check()
     except Exception:
@@ -103,9 +104,6 @@ def chat(
         db.rollback()
         raise HTTPException(status_code=500, detail="Stored pending action is invalid") from exc
     except Exception as exc:
-        # Roll back the request unit of work. External PMS side effects, if any, cannot
-        # be undone by SQLite and therefore result in a failed request rather than a
-        # false success claim.
         db.rollback()
         raise HTTPException(status_code=500, detail="Request could not be completed") from exc
 
