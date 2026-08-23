@@ -94,6 +94,23 @@ class DeterministicParser:
 
         room = self._extract_room_number(text)
 
+        # Explicit incident creation must beat a generic room-state word such as
+        # "dirty" while passive questions like "is room 214 dirty?" remain reads.
+        if self._mentions_incident_creation(normalized):
+            incident_type = (
+                "HOUSEKEEPING"
+                if self._has_any(normalized, "housekeeping", "cleaning", "dirty", "linen", "towel")
+                else "MAINTENANCE"
+            )
+            return CommandRequest(
+                "CREATE_INCIDENT",
+                {
+                    "room_number": room,
+                    "incident_type": incident_type,
+                    "description": text,
+                },
+            )
+
         # Room mutation phrases.
         if room and (
             self._has_any(normalized, "mark clean", "marked clean", "set clean", "make clean", "clean room")
@@ -115,22 +132,6 @@ class DeterministicParser:
             "out of order",
         ):
             return CommandRequest("GET_ROOM_STATUS", {"room_number": room})
-
-        # Incident creation is deliberately broad, but only after read/status intents.
-        if self._mentions_incident_creation(normalized):
-            incident_type = (
-                "HOUSEKEEPING"
-                if self._has_any(normalized, "housekeeping", "cleaning", "dirty", "linen", "towel")
-                else "MAINTENANCE"
-            )
-            return CommandRequest(
-                "CREATE_INCIDENT",
-                {
-                    "room_number": room,
-                    "incident_type": incident_type,
-                    "description": text,
-                },
-            )
 
         # Operational reporting aliases.
         if self._has_any(
@@ -208,6 +209,8 @@ class DeterministicParser:
                 "report incident",
                 "report a problem",
                 "report an issue",
+                "report a dirty room",
+                "report dirty room",
                 "broken",
                 "not working",
                 "doesn't work",
