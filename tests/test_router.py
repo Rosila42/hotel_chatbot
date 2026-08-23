@@ -30,7 +30,7 @@ def build_router() -> RouterTestBuilder:
 
 def test_automation_name_does_not_get_misclassified_as_arrivals():
     builder = build_router()
-    request = builder.router._interpret("enable morning arrival check")
+    request = builder.router.parser.parse("enable morning arrival check")
 
     assert request is not None
     assert request.name == "ENABLE_AUTOMATION"
