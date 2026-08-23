@@ -72,6 +72,7 @@ def test_request_scoped_audit_stays_in_supplied_transaction(isolated_session_fac
             ),
             db=db,
         )
+        db.flush()
         assert db.query(AuditRecord).count() == 1
         db.rollback()
 
