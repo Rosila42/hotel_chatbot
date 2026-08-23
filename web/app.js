@@ -29,6 +29,12 @@ function addMeta(text) {
   messages.appendChild(meta);
 }
 
+function resetConversation(message = "New staff session started. What do you need?") {
+  sessionId = null;
+  messages.innerHTML = "";
+  addMessage(message, "bot");
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     ...options,
@@ -97,15 +103,13 @@ document.querySelectorAll(".quick").forEach((button) => {
 });
 
 role.addEventListener("change", () => {
-  sessionId = null;
-  messages.innerHTML = "";
-  addMessage("New staff session started. What do you need?", "bot");
+  resetConversation();
   loadCapabilities();
 });
 
 shift.addEventListener("change", () => {
-  sessionId = null;
-  addMessage(`Shift context: ${shift.options[shift.selectedIndex].text}`, "meta");
+  resetConversation(`New ${shift.options[shift.selectedIndex].text.toLowerCase()} shift session started. What do you need?`);
+  loadCapabilities();
 });
 
 addMessage("Welcome. I am the hotel staff assistant. Ask about arrivals, rooms, incidents, FAQs, or approved automation.", "bot");

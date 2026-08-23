@@ -42,12 +42,7 @@ _pms = PMSService(MockPMSAdapter())
 _permissions = PermissionService()
 _automation = AutomationService(_pms)
 _commands = CommandRegistry(_permissions)
-_executor = CommandExecutor(
-    _pms,
-    _automation,
-    help_provider=_commands.names_for,
-)
-# Phase 2 keeps parsing replaceable while preserving one deterministic execution path.
+_executor = CommandExecutor(_pms, _automation, help_provider=_commands.names_for)
 _parser = DeterministicParser()
 _router = ChatRouter(_commands, _executor, parser=_parser)
 _worker = AutomationWorker(_automation)
@@ -93,19 +88,26 @@ def chat(
         session = session_repo.load_or_create_session(identity, request.session_id, request.shift)
         session_repo.add_message(session.session_id, "user", request.message)
 
-        result = _router.handle(session, request.message)
+        result = _router.handle(session, request.message, db=db)
 
         session_repo.update_session_state(session)
         session_repo.add_message(session.session_id, "assistant", result.message)
-
-        # Single transactional commit for session state and transcript persistence.
         session_repo.commit()
-    except SessionNotFound:
-        raise HTTPException(status_code=404, detail="Session not found")
-    except SessionAccessDenied:
-        raise HTTPException(status_code=403, detail="Session does not belong to authenticated user")
-    except CorruptedSessionState:
-        raise HTTPException(status_code=500, detail="Stored pending action is invalid")
+    except SessionNotFound as exc:
+        db.rollback()
+        raise HTTPException(status_code=404, detail="Session not found") from exc
+    except SessionAccessDenied as exc:
+        db.rollback()
+        raise HTTPException(status_code=403, detail="Session does not belong to authenticated user") from exc
+    except CorruptedSessionState as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Stored pending action is invalid") from exc
+    except Exception as exc:
+        # Roll back the request unit of work. External PMS side effects, if any, cannot
+        # be undone by SQLite and therefore result in a failed request rather than a
+        # false success claim.
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Request could not be completed") from exc
 
     return ChatResponse(
         session_id=session.session_id,

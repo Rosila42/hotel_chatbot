@@ -24,7 +24,6 @@ python -m pip install -r requirements-v2.txt
 
 chmod +x run_v2.sh verify_v2.sh install_v2.sh
 
-# Install a user-level desktop launcher. No sudo is required.
 APP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 mkdir -p "$APP_DIR"
 DESKTOP_FILE="$APP_DIR/hotel-chatbot-v2.desktop"
@@ -36,7 +35,7 @@ Name=Hotel Chatbot V2
 Comment=Local Hotel PMS Chatbot
 Exec=$ROOT/run_v2.sh
 Path=$ROOT
-Terminal=true
+Terminal=false
 Categories=Office;Utility;
 StartupNotify=true
 EOF
