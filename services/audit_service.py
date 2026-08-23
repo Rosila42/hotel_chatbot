@@ -4,6 +4,8 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+from sqlalchemy.orm import Session
+
 from core.permissions import Identity
 from models.commands import ResultKind
 from storage import AuditRecord, SessionLocal
@@ -23,26 +25,35 @@ class AuditService:
     """Persist a compact audit trail for chatbot-triggered operations."""
 
     @staticmethod
-    def record(event: AuditEvent) -> None:
+    def record(event: AuditEvent, db: Session | None = None) -> None:
         safe_parameters = AuditService._sanitize(event.parameters or {})
         safe_details = AuditService._sanitize(event.details)
-        with SessionLocal() as db:
-            db.add(
-                AuditRecord(
-                    user_id=event.identity.user_id,
-                    role=event.identity.role,
-                    department=event.identity.department,
-                    command=event.command,
-                    operation_type=event.operation_type,
-                    success=event.result_kind is ResultKind.SUCCESS,
-                    parameters=json.dumps(safe_parameters, default=str),
-                    details=json.dumps(
-                        {"result_kind": event.result_kind.value, "details": safe_details},
-                        default=str,
-                    ),
-                )
-            )
-            db.commit()
+
+        record = AuditRecord(
+            user_id=event.identity.user_id,
+            role=event.identity.role,
+            department=event.identity.department,
+            command=event.command,
+            operation_type=event.operation_type,
+            success=event.result_kind is ResultKind.SUCCESS,
+            parameters=json.dumps(safe_parameters, default=str),
+            details=json.dumps(
+                {"result_kind": event.result_kind.value, "details": safe_details},
+                default=str,
+            ),
+        )
+
+        if db is not None:
+            # Request-scoped audit participates in the same transaction as the
+            # session/transcript unit of work. The caller owns commit/rollback.
+            db.add(record)
+            return
+
+        # Background/system operations do not have a request transaction and use
+        # their own short-lived session.
+        with SessionLocal() as audit_db:
+            audit_db.add(record)
+            audit_db.commit()
 
     @staticmethod
     def record_system(
