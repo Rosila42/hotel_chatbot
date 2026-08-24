@@ -2,7 +2,7 @@
 
 A lightweight, local web application that adds a conversational and automation layer to an existing hotel PMS.
 
-V2 is being developed on `feat/v2-architecture`.
+V2 is being developed on `main`.
 
 ## What it is
 
@@ -67,7 +67,7 @@ sudo apt install python3.11 python3.11-venv git
 
 git clone https://github.com/Rosila42/hotel_chatbot.git
 cd hotel_chatbot
-git checkout feat/v2-architecture
+git checkout main
 bash install_v2.sh
 bash run_v2.sh
 ```
@@ -140,3 +140,6 @@ Completed V2 foundation:
 - optional AI boundary
 
 Remaining product work includes deeper FAQ content, richer department workflows, production authentication integration, a real PMS adapter, and optional AI features.
+
+## Current verified baseline
+The latest verified baseline for this project is documented in [docs/verification/2026-08-23-postmerge.md](docs/verification/2026-08-23-postmerge.md).
