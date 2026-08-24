@@ -13,15 +13,13 @@ jobs:
   build-deb:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout V2 branch
+      - name: Checkout main
         uses: actions/checkout@v4
-        with:
-          ref: feat/v2-architecture
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12.3'
 
       - name: Install build dependencies
         run: |
@@ -29,14 +27,19 @@ jobs:
           python -m pip install -r requirements-v2.txt
           python -m pip install pyinstaller
 
-      - name: Run V2 tests only
-        run: python -m pytest tests -q
+      - name: Run V2 tests
+        run: PYTHONPATH=. pytest -v
+
+      - name: Validate web JavaScript syntax
+        run: node --check web/app.js
 
       - name: Build bundled executable
         run: |
           pyinstaller --noconfirm --clean --onefile \
             --name hotel-chatbot-v2 \
             --add-data "web:web" \
+            --add-data "migrations:migrations" \
+            --add-data "alembic.ini:." \
             desktop_app.py
 
       - name: Build Debian package
@@ -60,7 +63,7 @@ jobs:
           Architecture: amd64
           Maintainer: Hotel Chatbot Project
           Description: Hotel PMS Chatbot V2
-           Local hotel PMS chatbot, FAQ and automation assistant.
+           Local hotel PMS Chatbot, FAQ and automation assistant.
           EOF
 
           dpkg-deb --build "dist/${PKG}"
