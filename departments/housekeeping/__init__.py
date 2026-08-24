@@ -1,14 +1,20 @@
 from typing import List
 
-# Housekeeping does not invent new commands. 
+from .housekeeping import HousekeepingChat
+
+# Housekeeping does not invent new commands.
 # It relies on the shared command registry and restricts its scope via permissions.
 ALLOWED_COMMANDS: List[str] = [
-    "GET_ROOM_STATUS",      # read
-    "MARK_ROOM_CLEAN",      # write, requires confirmation
-    "GET_INCIDENTS",        # read
-    "RESOLVE_INCIDENT",     # write, requires confirmation
+    "GET_ROOM_STATUS",
+    "MARK_ROOM_CLEAN",
+    "GET_INCIDENTS",
+    "RESOLVE_INCIDENT",
 ]
 
+
 def get_housekeeping_permissions() -> List[str]:
-    """Returns the list of command names the housekeeping department is permitted to use."""
-    return ALLOWED_COMMANDS
+    """Return the command names exposed to the housekeeping department."""
+    return list(ALLOWED_COMMANDS)
+
+
+__all__ = ["HousekeepingChat", "ALLOWED_COMMANDS", "get_housekeeping_permissions"]
