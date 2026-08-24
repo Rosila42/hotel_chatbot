@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Generator
 
-from sqlalchemy import Boolean, DateTime, String, Text, create_engine, event
+from sqlalchemy import Boolean, DateTime, String, Text, create_engine, event, inspect
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 
@@ -17,8 +17,14 @@ APP_DATA_DIR = Path(
 ) / "hotel-chatbot-v2"
 APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-TEST_DATABASE_PATH = os.environ.get("HOTEL_CHATBOT_TEST_DB")
-DATABASE_PATH = Path(TEST_DATABASE_PATH) if TEST_DATABASE_PATH else APP_DATA_DIR / "hotel_chatbot_v2.db"
+
+def _database_path() -> Path:
+    """Return the canonical runtime database path used by app and migrations."""
+    explicit_path = os.environ.get("HOTEL_CHATBOT_DB") or os.environ.get("HOTEL_CHATBOT_TEST_DB")
+    return Path(explicit_path) if explicit_path else APP_DATA_DIR / "hotel_chatbot_v2.db"
+
+
+DATABASE_PATH = _database_path()
 DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 engine = create_engine(
     DATABASE_URL,
@@ -105,9 +111,42 @@ class AuditRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+REQUIRED_SCHEMA_TABLES = {
+    "chat_sessions",
+    "chat_messages",
+    "automation_definitions",
+    "automation_executions",
+    "audit_records",
+}
+
+
 def init_db() -> None:
-    pass
-    # Production schema creation remains disabled; Alembic owns migrations.
+    """Apply Alembic migrations for the runtime database.
+
+    Legacy development databases created before Alembic are stamped at the
+    baseline only when all baseline tables already exist. Fresh databases are
+    upgraded normally. This keeps the application self-starting while preserving
+    Alembic as the schema authority.
+    """
+    from alembic import command
+    from alembic.config import Config
+
+    root = Path(__file__).resolve().parent
+    alembic_ini = root / "alembic.ini"
+    migrations_dir = root / "migrations"
+    if not alembic_ini.exists() or not migrations_dir.exists():
+        raise RuntimeError("Alembic migration resources are not available")
+
+    config = Config(str(alembic_ini))
+    config.set_main_option("script_location", str(migrations_dir))
+
+    with engine.connect() as connection:
+        tables = set(inspect(connection).get_table_names())
+
+    if "alembic_version" not in tables and REQUIRED_SCHEMA_TABLES.issubset(tables):
+        command.stamp(config, "head")
+
+    command.upgrade(config, "head")
 
 
 def get_db() -> Generator:
