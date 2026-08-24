@@ -13,7 +13,19 @@ def mock_pms_handler(request: httpx.Request) -> httpx.Response:
     if request.url.path == "/reservations":
         return httpx.Response(
             200,
-            json={"reservations": [{"reservation_id": "res-1", "guest_name": "John Martin"}]},
+            json={
+                "reservations": [
+                    {
+                        "reservation_id": "res-1",
+                        "guest_id": "g1",
+                        "guest_name": "John Martin",
+                        "room_number": "214",
+                        "arrival": "2026-08-25",
+                        "departure": "2026-08-28",
+                        "status": "CONFIRMED",
+                    }
+                ]
+            },
         )
     if request.url.path.startswith("/rooms/") and request.url.path.endswith("/status"):
         return httpx.Response(
@@ -38,6 +50,8 @@ def test_adapter_get_arrivals(mock_pms_adapter):
 
     assert len(arrivals) == 1
     assert arrivals[0].guest_name == "John Martin"
+    assert arrivals[0].reservation_id == "res-1"
+    assert arrivals[0].room_number == "214"
 
 
 def test_adapter_mark_room_clean(mock_pms_adapter):
