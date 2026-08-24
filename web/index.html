@@ -32,9 +32,8 @@
           <option value="morning">Morning</option>
           <option value="afternoon">Afternoon</option>
           <option value="night">Night</option>
-          <!-- Add this button near your role/shift controls -->
-          <button type="button" id="morning-mode-btn" class="quick">Reception — Morning</button>
         </select>
+        <button type="button" id="morning-mode-btn" class="quick">Reception — Morning</button>
       </section>
 
       <section>
@@ -44,10 +43,15 @@
 
       <section>
         <h2>Try</h2>
-        <button class="quick" data-message="Who is checking in today?">Today's arrivals</button>
-        <button class="quick" data-message="Show operational summary">Operational summary</button>
-        <button class="quick" data-message="What is the status of room 101?">Room 101 status</button>
-        <button class="quick" data-message="What is the breakfast policy?">Breakfast FAQ</button>
+        <button class="quick" type="button" data-message="Who is checking in today?">Today's arrivals</button>
+        <button class="quick" type="button" data-message="Show operational summary">Operational summary</button>
+        <button class="quick" type="button" data-message="What is the status of room 101?">Room 101 status</button>
+        <button class="quick" type="button" data-message="What is the breakfast policy?">Breakfast FAQ</button>
+      </section>
+
+      <section>
+        <h2>Suggested</h2>
+        <div id="suggested-prompts" class="suggested-prompts"></div>
       </section>
     </aside>
 
