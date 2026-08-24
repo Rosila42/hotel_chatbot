@@ -49,10 +49,11 @@ class RealPMSAdapter(PMSInterface):
         headers["Authorization"] = f"Bearer {self._get_auth_token()}"
         headers["X-Operation-Id"] = str(uuid.uuid4())
 
-        max_retries = 3 if is_read else 0
+        # Reads get up to three attempts; writes get exactly one attempt.
+        attempts = 3 if is_read else 1
         last_exc = None
 
-        for attempt in range(max_retries):
+        for attempt in range(attempts):
             try:
                 response = self._client.request(
                     method,
@@ -67,14 +68,14 @@ class RealPMSAdapter(PMSInterface):
                 logger.warning(
                     "PMS request failed (attempt %s/%s): %s",
                     attempt + 1,
-                    max_retries,
+                    attempts,
                     exc,
                 )
-                if not is_read or attempt == max_retries - 1:
+                if not is_read or attempt == attempts - 1:
                     break
 
         raise ConnectionError(
-            f"Failed to communicate with PMS after {max_retries} retries."
+            f"Failed to communicate with PMS after {attempts} attempts."
         ) from last_exc
 
     def search_guests(self, name: str) -> list[Guest]:
