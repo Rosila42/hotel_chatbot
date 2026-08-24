@@ -8,7 +8,7 @@ PYTHON_BIN="${PYTHON_BIN:-python3}"
 VENV_DIR="${VENV_DIR:-.venv}"
 
 if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
-  echo "Python executable '$PYTHON_BIN' was not found. Install Python 3.11+ first." >&2
+  echo "Python executable '$PYTHON_BIN' was not found. Install Python 3.12+ first." >&2
   exit 1
 fi
 
@@ -22,8 +22,14 @@ source "$VENV_DIR/bin/activate"
 python -m pip install --upgrade pip
 python -m pip install -r requirements-v2.txt
 
-python -m pytest -q
+PYTHONPATH=. pytest -v
 python -m compileall -q .
 python -c "import main; print('FastAPI import OK:', main.app.title)"
+
+if command -v node >/dev/null 2>&1; then
+  node --check web/app.js
+else
+  echo "Node.js not found; skipping JavaScript syntax check." >&2
+fi
 
 echo "V2 verification completed successfully."
