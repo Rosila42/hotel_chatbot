@@ -1,6 +1,8 @@
+from __future__ import annotations
+
+import logging
 import os
 import uuid
-import logging
 from datetime import date
 from typing import Optional
 
@@ -13,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class RealPMSAdapter(PMSInterface):
-    """Production PMS Adapter implementing the PMSInterface."""
+    """REST-based PMS adapter kept behind the PMSInterface boundary."""
 
     def __init__(
         self,
@@ -22,8 +24,6 @@ class RealPMSAdapter(PMSInterface):
         client_secret: str | None = None,
         client: httpx.Client | None = None,
     ):
-        # Explicit None checking preserves an intentionally empty base URL used by
-        # httpx.MockTransport integration tests.
         self.base_url = (
             base_url
             if base_url is not None
@@ -35,23 +35,21 @@ class RealPMSAdapter(PMSInterface):
         self._client = client or httpx.Client(timeout=httpx.Timeout(5.0, read=3.0))
 
     def _get_auth_token(self) -> str:
-        """Fetches and caches the OAuth2 bearer token."""
+        """Fetch and cache an access token placeholder until PMS OAuth is integrated."""
         if self._token:
             return self._token
-
-        logger.info("Fetching new PMS OAuth2 token...")
+        logger.info("Fetching PMS OAuth2 token placeholder...")
         self._token = "dummy-access-token-xyz"
         return self._token
 
     def _request(self, method: str, endpoint: str, is_read: bool = True, **kwargs) -> dict:
-        """Execute HTTP requests with auth, operation tracing, and read retries."""
-        headers = kwargs.pop("headers", {})
+        """Execute a PMS request with auth and bounded retry policy."""
+        headers = dict(kwargs.pop("headers", {}))
         headers["Authorization"] = f"Bearer {self._get_auth_token()}"
         headers["X-Operation-Id"] = str(uuid.uuid4())
 
-        # Reads get up to three attempts; writes get exactly one attempt.
         attempts = 3 if is_read else 1
-        last_exc = None
+        last_exc: Exception | None = None
 
         for attempt in range(attempts):
             try:
@@ -63,16 +61,20 @@ class RealPMSAdapter(PMSInterface):
                 )
                 response.raise_for_status()
                 return response.json()
-            except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.HTTPStatusError) as exc:
+            except (httpx.ConnectTimeout, httpx.ReadTimeout) as exc:
                 last_exc = exc
-                logger.warning(
-                    "PMS request failed (attempt %s/%s): %s",
-                    attempt + 1,
-                    attempts,
-                    exc,
-                )
-                if not is_read or attempt == attempts - 1:
-                    break
+            except httpx.HTTPStatusError:
+                # Preserve HTTP errors so callers can distinguish 404/not-found
+                # from transport failures and map them appropriately.
+                raise
+
+            logger.warning(
+                "PMS request timeout (attempt %s/%s)",
+                attempt + 1,
+                attempts,
+            )
+            if not is_read or attempt == attempts - 1:
+                break
 
         raise ConnectionError(
             f"Failed to communicate with PMS after {attempts} attempts."
@@ -82,11 +84,7 @@ class RealPMSAdapter(PMSInterface):
         data = self._request("GET", "/guests", params={"name": name})
         return [Guest(**guest) for guest in data.get("guests", [])]
 
-    def get_reservation(
-        self,
-        reservation_id: str | None = None,
-        guest_name: str | None = None,
-    ) -> list[Reservation]:
+    def get_reservation(self, reservation_id: str | None = None, guest_name: str | None = None) -> list[Reservation]:
         params = {}
         if reservation_id:
             params["reservation_id"] = reservation_id
@@ -114,11 +112,11 @@ class RealPMSAdapter(PMSInterface):
     def get_room(self, room_number: str) -> Room | None:
         try:
             data = self._request("GET", f"/rooms/{room_number}")
-            return Room(**data)
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 404:
                 return None
             raise
+        return Room(**data)
 
     def get_rooms(self, status: RoomStatus | None = None) -> list[Room]:
         params = {"status": status.value if status else None}
@@ -138,12 +136,7 @@ class RealPMSAdapter(PMSInterface):
         data = self._request("GET", "/incidents", params={"status": status})
         return [Incident(**incident) for incident in data.get("incidents", [])]
 
-    def create_incident(
-        self,
-        room_number: str | None,
-        incident_type: str,
-        description: str,
-    ) -> Incident:
+    def create_incident(self, room_number: str | None, incident_type: str, description: str) -> Incident:
         payload = {"type": incident_type, "description": description}
         if room_number:
             payload["room_number"] = room_number
@@ -151,9 +144,5 @@ class RealPMSAdapter(PMSInterface):
         return Incident(**data)
 
     def resolve_incident(self, incident_id: str) -> Incident:
-        data = self._request(
-            "PUT",
-            f"/incidents/{incident_id}/resolve",
-            is_read=False,
-        )
+        data = self._request("PUT", f"/incidents/{incident_id}/resolve", is_read=False)
         return Incident(**data)
