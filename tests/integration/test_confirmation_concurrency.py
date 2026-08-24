@@ -1,33 +1,44 @@
-import pytest
-from fastapi.testclient import TestClient
+from __future__ import annotations
+
 from concurrent.futures import ThreadPoolExecutor
 
-# TODO: Adjust this import to match your actual app location
-from main import app
 
-# --- Fixtures ---
-# If you already have these in a conftest.py, you can delete them from here
-@pytest.fixture(scope="module")
-def client():
-    with TestClient(app) as c:
-        yield c
+def test_concurrent_confirmation_single_execution(client, housekeeping_headers):
+    request_response = client.post(
+        "/chat",
+        json={"message": "report dirty room 214"},
+        headers=housekeeping_headers,
+    )
+    assert request_response.status_code == 200, request_response.text
 
-@pytest.fixture(scope="module")
-def reception_headers():
-    # Use whatever token/headers your app expects for the "reception" role
-    return {"Authorization": "Bearer test-reception-token"}
-
-# --- Tests ---
-def test_concurrent_confirmation_single_execution(client, reception_headers):
-    # Issue the write
-    client.post("/chat", json={"text": "report dirty room 214"}, headers=reception_headers)
+    request_body = request_response.json()
+    assert request_body["success"] is False
+    assert request_body["command"] == "CREATE_INCIDENT"
+    session_id = request_body["session_id"]
 
     def confirm():
-        return client.post("/chat", json={"text": "confirm"}, headers=reception_headers)
+        return client.post(
+            "/chat",
+            json={"message": "confirm", "session_id": session_id},
+            headers=housekeeping_headers,
+        )
 
     with ThreadPoolExecutor(max_workers=2) as pool:
-        futures = [pool.submit(confirm) for _ in range(2)]
-        results = [f.result() for f in futures]
+        results = [future.result() for future in (pool.submit(confirm), pool.submit(confirm))]
 
-    successes = [r for r in results if r.json().get("kind") == "SUCCESS"]
-    assert len(successes) == 1, f"expected exactly one SUCCESS, got {len(successes)}"
+    assert all(response.status_code == 200 for response in results), [
+        response.text for response in results
+    ]
+
+    bodies = [response.json() for response in results]
+    successes = [body for body in bodies if body["success"] is True]
+    consumed = [
+        body
+        for body in bodies
+        if "already consumed" in body.get("message", "").lower()
+    ]
+
+    assert len(successes) == 1, bodies
+    assert successes[0]["command"] == "CREATE_INCIDENT"
+    assert len(consumed) == 1, bodies
+    assert consumed[0]["success"] is False
