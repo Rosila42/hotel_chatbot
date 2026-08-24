@@ -3,10 +3,11 @@ name: V2 tests
 on:
   push:
     branches:
-      - feat/v2-architecture
+      - main
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   test:
