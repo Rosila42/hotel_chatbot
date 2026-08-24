@@ -17,7 +17,8 @@ APP_DATA_DIR = Path(
 ) / "hotel-chatbot-v2"
 APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-DATABASE_PATH = APP_DATA_DIR / "hotel_chatbot_v2.db"
+TEST_DATABASE_PATH = os.environ.get("HOTEL_CHATBOT_TEST_DB")
+DATABASE_PATH = Path(TEST_DATABASE_PATH) if TEST_DATABASE_PATH else APP_DATA_DIR / "hotel_chatbot_v2.db"
 DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 engine = create_engine(
     DATABASE_URL,
@@ -106,7 +107,7 @@ class AuditRecord(Base):
 
 def init_db() -> None:
     pass
-    #Base.metadata.create_all(bind=engine)
+    # Production schema creation remains disabled; Alembic owns migrations.
 
 
 def get_db() -> Generator:

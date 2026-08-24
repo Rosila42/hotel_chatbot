@@ -20,16 +20,9 @@ class Parser(Protocol):
 
 
 class DeterministicParser:
-    """Rule-based parser implementing the Phase 2 parser contract.
-
-    This class owns natural-language interpretation only. The router remains the
-    single trusted policy gate for authorization, validation, confirmation, and
-    execution.
-    """
+    """Rule-based parser implementing the Phase 2 parser contract."""
 
     def __init__(self, today_provider: Callable[[], date] = date.today) -> None:
-        # Injecting the date source keeps parser tests deterministic without changing
-        # the production behavior, which still uses the host application's current date.
         self._today_provider = today_provider
 
     def parse(self, text: str) -> CommandRequest | None:
@@ -42,7 +35,6 @@ class DeterministicParser:
         if normalized in {"status", "system status", "what is the system status", "is the system up"}:
             return CommandRequest("GET_SYSTEM_STATUS")
 
-        # Known automation names take precedence over generic arrival/departure words.
         automation_id = self._automation_id(normalized)
         if automation_id:
             if self._has_any(normalized, "list", "show", "available") and "automation" in normalized:
@@ -74,7 +66,6 @@ class DeterministicParser:
         if "automation" in normalized and self._has_any(normalized, "list", "show", "available"):
             return CommandRequest("LIST_AUTOMATIONS")
 
-        # Incident reads must precede incident writes.
         if "incidents" in normalized and self._has_any(normalized, "list", "show", "view", "get", "open"):
             status = "OPEN" if self._has_any(normalized, "open", "unresolved", "active") else None
             params = {"status": status} if status else {}
@@ -87,7 +78,6 @@ class DeterministicParser:
         if incident_id and self._has_any(normalized, "resolve incident", "close incident", "resolve issue", "close issue"):
             return CommandRequest("RESOLVE_INCIDENT", {"incident_id": incident_id})
 
-        # Date-aware arrival/departure interpretation.
         if self._mentions_arrivals(normalized):
             return CommandRequest("GET_ARRIVALS", {"date": self._requested_date(normalized).isoformat()})
         if self._mentions_departures(normalized):
@@ -98,7 +88,6 @@ class DeterministicParser:
             if name:
                 return CommandRequest("SEARCH_GUEST", {"name": name})
 
-        # Reservation lookup supports reservation IDs and guest names.
         if "reservation" in normalized or "booking" in normalized:
             reservation_id = self._extract(
                 text,
@@ -112,7 +101,6 @@ class DeterministicParser:
 
         room = self._extract_room_number(text)
 
-        # Explicit writes take precedence over passive room-state language.
         if self._mentions_incident_creation(normalized):
             incident_type = (
                 "HOUSEKEEPING"
@@ -134,7 +122,6 @@ class DeterministicParser:
         ):
             return CommandRequest("MARK_ROOM_CLEAN", {"room_number": room})
 
-        # Allow filtered room-set questions as well as single-room status.
         if self._has_any(normalized, "not ready", "not-ready", "dirty rooms", "cleaning rooms", "available rooms"):
             filter_name = (
                 "not_ready" if self._has_any(normalized, "not ready", "not-ready")
@@ -211,8 +198,8 @@ class DeterministicParser:
     def _mentions_faq(text: str) -> bool:
         return any(phrase in text for phrase in (
             "breakfast", "checkout time", "check-out time", "check out time",
-            "check-in time", "check in time", "wifi", "wi-fi", "internet",
-            "hotel policy", "cancellation policy", "parking",
+            "what time is checkout", "when is checkout", "check-in time", "check in time",
+            "wifi", "wi-fi", "internet", "hotel policy", "cancellation policy", "parking",
         ))
 
     def _requested_date(self, text: str) -> date:
