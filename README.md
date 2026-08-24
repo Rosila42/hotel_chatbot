@@ -1,8 +1,6 @@
 # Hotel PMS Chatbot V2
 
-A lightweight, local web application that adds a conversational and automation layer to an existing hotel PMS.
-
-V2 is being developed on `feat/v2-architecture`.
+A lightweight local web application that adds a deterministic conversational and automation layer to an existing hotel PMS.
 
 ## What it is
 
@@ -10,13 +8,37 @@ This project is **not a replacement PMS**. The PMS remains the system of record.
 
 The application provides:
 
-- deterministic hotel FAQ;
+- deterministic hotel FAQ and intent routing;
 - PMS information access;
 - controlled PMS operations;
 - predefined automation workflows;
 - role-based permissions;
 - persistent sessions and audit history;
-- an optional AI layer that is not required for core operation.
+- an optional AI parsing boundary that is not required for core operation.
+
+The deterministic command pipeline is authoritative. An optional LLM may translate free text into a constrained `CommandRequest`, but authorization, validation, confirmation, and execution remain inside the deterministic core.
+
+## Runtime architecture
+
+```text
+Browser / Desktop launcher
+          ↓
+        FastAPI
+          ↓
+  Deterministic Chat Router
+    ├── Command Registry
+    ├── Permission Service
+    ├── Confirmation Gate
+    └── Command Executor
+          ↓
+      PMS Service
+          ↓
+     PMS Interface
+      ├── Mock Adapter
+      └── Real REST Adapter (prototype)
+```
+
+SQLite is used for local persistence. Alembic owns the database schema and is applied automatically during application startup.
 
 ## Normal-user experience on Ubuntu
 
@@ -34,109 +56,99 @@ Open Applications → Hotel Chatbot V2
 Browser opens automatically
 ```
 
-The package bundles the Python application and its core dependencies. SQLite data is stored under the user's Linux application-data directory, not inside the installed program directory.
+The package bundles the Python application, web assets, and Alembic migration resources. SQLite data is stored under the user's Linux application-data directory, not inside the installed program directory.
 
-## Local web application
+## Development
 
-The V2 product runs locally as a small FastAPI web service and is opened in a normal browser.
-
-```text
-Browser
-   ↓
-FastAPI
-   ↓
-Chat Core
-   ├── FAQ
-   ├── PMS Service → PMS Adapter
-   └── Automation Worker
-```
-
-SQLite is used for local persistence. No MySQL, PostgreSQL, Redis, Celery, Docker, or cloud service is required for the V2 demo.
-
-## Ubuntu package build
-
-The repository contains a GitHub Actions workflow that builds the Ubuntu `.deb` package from the V2 branch.
-
-The resulting package can be downloaded from the workflow artifact and installed by double-clicking it in Ubuntu Software.
-
-For development machines, the terminal-based setup remains available:
+The main development branch is `main`.
 
 ```bash
-sudo apt update
-sudo apt install python3.11 python3.11-venv git
-
-git clone https://github.com/Rosila42/hotel_chatbot.git
-cd hotel_chatbot
-git checkout feat/v2-architecture
-bash install_v2.sh
-bash run_v2.sh
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-v2.txt
+PYTHONPATH=. pytest -v
 ```
 
-The developer launcher starts the local server and, on Ubuntu desktops with `xdg-open`, opens:
+The local launcher starts the application at:
 
 ```text
 http://127.0.0.1:8000/app/
 ```
 
-The FastAPI documentation is available at:
+FastAPI documentation is available at:
 
 ```text
 http://127.0.0.1:8000/docs
 ```
 
-## Demo users
+For a convenience desktop-style launcher on Ubuntu:
 
-The V2 demo currently uses simple local bearer tokens:
-
-```text
-Reception:     demo-reception-token
-Housekeeping:  demo-housekeeping-token
-Management:    demo-manager-token
+```bash
+bash install_v2.sh
 ```
 
-These are demonstration credentials only. Production deployments should federate identity with the host PMS/application.
+## Demo users
+
+The V2 demo currently uses local bearer tokens:
+
+```text
+Reception:      demo-reception-token
+Housekeeping:   demo-housekeeping-token
+Management:     demo-manager-token
+```
+
+These are demonstration credentials only. Production deployments should federate identity with the host PMS/application and must not expose demo credentials on untrusted networks.
+
+## PMS integration
+
+Development defaults to the in-memory/mock PMS adapter.
+
+A REST-based `RealPMSAdapter` exists behind the `PMSInterface` boundary and can be selected with:
+
+```bash
+export HOTEL_CHATBOT_PMS_ADAPTER=real
+```
+
+The current real adapter is an integration skeleton: its transport, request tracing, retry policy, and data mapping are implemented, but its OAuth token exchange is still a placeholder. It is not yet a production PMS connector.
+
+## Optional AI
+
+The core installation does **not** require an LLM provider.
+
+The optional AI boundary only translates user text into a constrained command request. The deterministic router remains responsible for authorization, parameter validation, confirmation, and execution.
 
 ## Verification
 
-Developers can run:
+Run the repository verification script:
 
 ```bash
 bash verify_v2.sh
 ```
 
-This performs the pytest suite, Python compilation check, and FastAPI import check.
-
-## Optional AI
-
-AI is deliberately separated from the deterministic core.
-
-The core installation does **not** require an LLM provider.
-
-When AI work begins, install the optional dependency set:
+Or run the exact test command directly:
 
 ```bash
-python -m pip install -r requirements-ai.txt
+PYTHONPATH=. pytest -v
 ```
 
-The AI path remains behind `AIService` and a thin `LLMAdapter`.
+The CI workflow also checks JavaScript syntax with Node.js before the package workflow builds the Ubuntu installer.
 
 ## Development status
 
-Completed V2 foundation:
+The V2 foundation is implemented, including:
 
-- FastAPI API
-- local web UI
-- native Ubuntu packaging workflow
-- SQLite persistence
-- authentication/identity boundary
-- command registry
-- deterministic intent routing
-- mock PMS adapter
-- automation service and worker
-- confirmation workflow
-- audit logging
-- PMS resilience policy
-- pytest coverage
-- optional AI boundary
+- FastAPI API;
+- local web UI;
+- Ubuntu packaging workflow;
+- SQLite persistence and Alembic migrations;
+- authentication/identity boundary;
+- command registry and deterministic parser;
+- mock PMS adapter;
+- automation service and worker;
+- confirmation workflow with concurrency protection;
+- audit logging;
+- PMS resilience policy;
+- integration and unit test coverage;
+- optional AI parser boundary.
 
-Remaining product work includes deeper FAQ content, richer department workflows, production authentication integration, a real PMS adapter, and optional AI features.
+Remaining product work is primarily deeper hotel-specific workflows, production authentication integration, production PMS authentication/integration, richer FAQ content, and optional AI features.
