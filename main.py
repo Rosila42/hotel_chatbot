@@ -16,6 +16,7 @@ from core.parser import DeterministicParser
 from core.permissions import Identity, PermissionService
 from core.router import ChatRouter
 from integrations.pms.mock_adapter import MockPMSAdapter
+from pms_adapters.real_pms_adapter import RealPMSAdapter
 from services.automation_service import AutomationService
 from services.automation_worker import AutomationWorker
 from services.command_executor import CommandExecutor
@@ -28,6 +29,7 @@ from services.session_repository import (
 )
 from storage import get_db, init_db
 
+import os
 
 def _application_root() -> Path:
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
@@ -38,7 +40,25 @@ def _application_root() -> Path:
 ROOT = _application_root()
 WEB_DIR = ROOT / "web"
 
-_pms = PMSService(MockPMSAdapter())
+# Step 8.5: Feature-flag the adapter. Defaults to "mock" for development safety.
+adapter_choice = os.getenv("HOTEL_CHATBOT_PMS_ADAPTER", "mock").lower()
+
+if adapter_choice == "real":
+    _pms = PMSService(RealPMSAdapter())
+else:
+    _pms = PMSService(MockPMSAdapter())
+
+'''
+# Check if the environment variable is set to "true"
+use_real_pms = os.getenv("USE_REAL_PMS", "false").lower() == "true"
+
+# Use the real adapter if true, otherwise use the mock
+if use_real_pms:
+    _pms = PMSService(RealPMSAdapter())
+else:
+    _pms = PMSService(MockPMSAdapter())
+'''
+ 
 _permissions = PermissionService()
 _automation = AutomationService(_pms)
 _commands = CommandRegistry(_permissions)
@@ -47,7 +67,8 @@ _parser = DeterministicParser()
 _router = ChatRouter(_commands, _executor, parser=_parser)
 _worker = AutomationWorker(_automation)
 
-
+# NOTE: Database schema is no longer auto-created on startup. 
+# Users/Developers must run `alembic upgrade head` before starting the app.
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:

@@ -105,7 +105,8 @@ class AuditRecord(Base):
 
 
 def init_db() -> None:
-    Base.metadata.create_all(bind=engine)
+    pass
+    #Base.metadata.create_all(bind=engine)
 
 
 def get_db() -> Generator:
