@@ -1,46 +1,47 @@
-from typing import Dict, Any
+from __future__ import annotations
 
-# Shift-specific contextual hints for the Reception department.
-# These do NOT change the available command sets, only the contextual hints 
-# provided to the UI or the LLM parser.
-SHIFT_CONTEXT: Dict[str, Dict[str, Any]] = {
-    "morning": {
+from typing import Any
+
+from departments.base import Shift
+
+
+SHIFT_CONTEXT: dict[Shift, dict[str, Any]] = {
+    Shift.MORNING: {
         "shift_name": "Morning",
         "focus": ["arrivals", "room readiness"],
         "suggested_prompts": [
             "today's arrivals",
-            "which rooms are not ready?"
+            "which rooms are not ready?",
         ],
-        "system_prompt_hint": "Focus on checking in arrivals and ensuring rooms are marked ready."
+        "system_prompt_hint": "Focus on arrivals, room readiness, and front-desk operational issues.",
     },
-    "afternoon": {
+    Shift.AFTERNOON: {
         "shift_name": "Afternoon",
-        "focus": ["departures", "mid-day incidents"],
+        "focus": ["departures", "incidents"],
         "suggested_prompts": [
             "who is leaving today?",
-            "show open incidents"
+            "show open incidents",
         ],
-        "system_prompt_hint": "Focus on processing departures and resolving mid-day incidents."
+        "system_prompt_hint": "Focus on departures, incidents, and the remaining day's operations.",
     },
-    "night": {
+    Shift.NIGHT: {
         "shift_name": "Night",
-        "focus": ["audit", "security walk", "next-day prep"],
+        "focus": ["audit", "next-day preparation"],
         "suggested_prompts": [
-            "run automation NIGHT_AUDIT",
-            "operational summary"
+            "give me today's summary",
+            "list automations",
         ],
-        "system_prompt_hint": "Focus on night audit, security walks, and preparing for the next day."
-    }
+        "system_prompt_hint": "Focus on operational review, audit-related checks, and next-day preparation.",
+    },
 }
 
-def get_shift_context(shift: str) -> Dict[str, Any]:
-    """
-    Returns the contextual hints for a specific reception shift.
-    Defaults to morning if an unknown shift is provided.
-    """
-    if not shift:
-        return SHIFT_CONTEXT["morning"]
-    
-    # Normalize the input (e.g., "Morning", "MORNING" -> "morning")
-    safe_shift = shift.lower().strip()
-    return SHIFT_CONTEXT.get(safe_shift, SHIFT_CONTEXT["morning"])
+
+def get_shift_context(shift: str | Shift) -> dict[str, Any]:
+    """Return immutable-source shift hints as a fresh dictionary."""
+    parsed = Shift.parse(shift)
+    source = SHIFT_CONTEXT[parsed]
+    return {
+        **source,
+        "focus": list(source["focus"]),
+        "suggested_prompts": list(source["suggested_prompts"]),
+    }
