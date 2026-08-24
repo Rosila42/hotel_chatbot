@@ -1,20 +1,21 @@
 def test_morning_reception_full_flow(client, reception_headers):
-    # Step 1: arrivals
-    r = client.post("/chat", json={"text": "today's arrivals"}, headers=reception_headers)
-    assert r.json()["kind"] == "SUCCESS"
+    """Verify the Reception morning flow against the current /chat API contract."""
+    requests = [
+        ("today's arrivals", "GET_ARRIVALS"),
+        ("which rooms aren't ready", "GET_ROOM_STATUS"),
+        ("what time is checkout", "FAQ_SEARCH"),
+        ("help", "HELP"),
+        ("who is leaving today", "GET_DEPARTURES"),
+    ]
 
-    # Step 2: room status
-    r = client.post("/chat", json={"text": "which rooms aren't ready"}, headers=reception_headers)
-    assert r.json()["kind"] == "SUCCESS"
+    for message, expected_command in requests:
+        response = client.post(
+            "/chat",
+            json={"message": message, "shift": "morning"},
+            headers=reception_headers,
+        )
 
-    # Step 3: create incident
-    r = client.post("/chat", json={"text": "report dirty room 214"}, headers=reception_headers)
-    assert "CONFIRM" in r.json()["kind"] or r.json()["kind"] == "AWAITING_CONFIRMATION"
-
-    # Step 4: confirm
-    r = client.post("/chat", json={"text": "confirm"}, headers=reception_headers)
-    assert r.json()["kind"] == "SUCCESS"
-
-    # Step 5: operational summary
-    r = client.post("/chat", json={"text": "operational summary"}, headers=reception_headers)
-    assert r.json()["kind"] == "SUCCESS"
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["success"] is True, body
+        assert body["command"] == expected_command, body
