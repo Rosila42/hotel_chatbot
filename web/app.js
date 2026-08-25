@@ -4,10 +4,44 @@ const TOKENS = {
   manager: "demo-manager-token",
 };
 
-const SHIFT_SUGGESTIONS = {
-  morning: ["today's arrivals", "which rooms are not ready?"],
-  afternoon: ["who is leaving today?", "show open incidents"],
-  night: ["operational summary", "list automations"]
+const ROLE_SUGGESTIONS = {
+  reception: {
+    morning: [
+      "Who is checking in today?",
+      "Which rooms are not ready for today's arrivals?",
+      "What is the status of room 214?",
+    ],
+    afternoon: [
+      "Who is leaving today?",
+      "Show open incidents",
+      "What is the status of room 214?",
+    ],
+    night: [
+      "Show operational summary",
+      "Show open incidents",
+      "List automations",
+    ],
+  },
+  housekeeping: {
+    default: [
+      "Which rooms are not ready?",
+      "Show open incidents",
+      "What is the status of room 214?",
+    ],
+  },
+  manager: {
+    default: [
+      "Show operational summary",
+      "Show open incidents",
+      "List automations",
+    ],
+  },
+};
+
+const ROLE_LABELS = {
+  reception: "Reception",
+  housekeeping: "Housekeeping",
+  manager: "Management",
 };
 
 let sessionId = null;
@@ -19,6 +53,7 @@ const role = document.getElementById("role");
 const shift = document.getElementById("shift");
 const capabilities = document.getElementById("capabilities");
 const status = document.getElementById("status");
+const contextSummary = document.getElementById("context-summary");
 
 function addMessage(text, kind = "bot") {
   const bubble = document.createElement("div");
@@ -28,31 +63,47 @@ function addMessage(text, kind = "bot") {
   messages.scrollTop = messages.scrollHeight;
 }
 
-function addMeta(text) {
+function addMeta(text, tone = "default") {
   const meta = document.createElement("div");
-  meta.className = "message meta";
+  meta.className = `message meta ${tone}`;
   meta.textContent = text;
   messages.appendChild(meta);
 }
 
-function updateSuggestedPrompts(shiftValue) {
-  const shiftKey = shiftValue ? shiftValue.toLowerCase() : "morning";
-  const prompts = SHIFT_SUGGESTIONS[shiftKey] || SHIFT_SUGGESTIONS.morning;
-  input.placeholder = `Type freely... e.g., '${prompts[0]}'`;
+function currentSuggestions() {
+  const roleKey = role.value;
+  const roleConfig = ROLE_SUGGESTIONS[roleKey] || ROLE_SUGGESTIONS.reception;
+  if (roleKey === "reception") {
+    const shiftKey = shift.value || "morning";
+    return roleConfig[shiftKey] || roleConfig.morning;
+  }
+  return roleConfig.default;
+}
+
+function updateContextSummary() {
+  if (!contextSummary) return;
+  const roleLabel = ROLE_LABELS[role.value] || "Staff";
+  const shiftLabel = shift.value ? shift.options[shift.selectedIndex].text : "No shift specified";
+  contextSummary.textContent = `${roleLabel} · ${shiftLabel}`;
+}
+
+function updateSuggestedPrompts() {
+  const prompts = currentSuggestions();
+  input.placeholder = `Ask naturally… e.g. '${prompts[0]}'`;
 
   const suggestionsContainer = document.getElementById("suggested-prompts");
-  if (suggestionsContainer) {
-    suggestionsContainer.innerHTML = "";
-    prompts.forEach((prompt) => {
-      const button = document.createElement("button");
-      button.className = "quick";
-      button.type = "button";
-      button.textContent = prompt;
-      button.dataset.message = prompt;
-      button.addEventListener("click", () => sendMessage(prompt));
-      suggestionsContainer.appendChild(button);
-    });
-  }
+  if (!suggestionsContainer) return;
+
+  suggestionsContainer.innerHTML = "";
+  prompts.forEach((prompt) => {
+    const button = document.createElement("button");
+    button.className = "quick";
+    button.type = "button";
+    button.textContent = prompt;
+    button.dataset.message = prompt;
+    button.addEventListener("click", () => sendMessage(prompt));
+    suggestionsContainer.appendChild(button);
+  });
 }
 
 function resetConversation(message = "New staff session started. What do you need?") {
@@ -64,11 +115,11 @@ function resetConversation(message = "New staff session started. What do you nee
 function activateReceptionMorningMode() {
   role.value = "reception";
   shift.value = "morning";
-  resetConversation("Reception — Morning session started. What do you need?");
+  resetConversation("Reception — Morning session started. Let's work through today's arrivals.");
   loadCapabilities();
-  updateSuggestedPrompts("morning");
-  addMeta("💡 Suggested next prompt: 'today's arrivals'");
-  input.placeholder = "Type freely... e.g., 'today's arrivals' or 'status of room 214'";
+  updateSuggestedPrompts();
+  updateContextSummary();
+  addMeta("Demo flow: arrivals → room readiness → incident → housekeeping → management");
   input.value = "";
   input.focus();
 }
@@ -99,11 +150,29 @@ async function loadCapabilities() {
       tag.textContent = name;
       capabilities.appendChild(tag);
     }
-    status.textContent = "PMS connected · AI optional";
+    status.textContent = "Connected · deterministic core · AI optional";
+    updateContextSummary();
   } catch (error) {
     status.textContent = "Connection error";
     capabilities.textContent = "Unable to load capabilities";
   }
+}
+
+function metaForCommand(command) {
+  if (!command) return null;
+  const writes = new Set([
+    "MARK_ROOM_CLEAN",
+    "CREATE_INCIDENT",
+    "RESOLVE_INCIDENT",
+    "ENABLE_AUTOMATION",
+    "DISABLE_AUTOMATION",
+    "RUN_AUTOMATION",
+  ]);
+  const tone = writes.has(command) ? "write" : "read";
+  return {
+    text: `${command} · ${tone === "write" ? "write / confirmation gate" : "read"}`,
+    tone,
+  };
 }
 
 async function sendMessage(text) {
@@ -125,7 +194,9 @@ async function sendMessage(text) {
 
     sessionId = result.session_id;
     addMessage(result.message, "bot");
-    if (result.command) addMeta(`Command: ${result.command}`);
+
+    const commandMeta = metaForCommand(result.command);
+    if (commandMeta) addMeta(`Command: ${commandMeta.text}`, commandMeta.tone);
   } catch (error) {
     addMessage(`The request could not be completed: ${error.message}`, "bot");
   }
@@ -146,18 +217,24 @@ document.querySelectorAll(".quick").forEach((button) => {
 });
 
 role.addEventListener("change", () => {
-  resetConversation();
+  if (role.value !== "reception") shift.value = "";
+  resetConversation(`${ROLE_LABELS[role.value] || "Staff"} session started. What do you need?`);
   loadCapabilities();
+  updateSuggestedPrompts();
+  updateContextSummary();
 });
 
 shift.addEventListener("change", () => {
   const label = shift.options[shift.selectedIndex].text.toLowerCase();
   resetConversation(`New ${label} shift session started. What do you need?`);
   loadCapabilities();
-  updateSuggestedPrompts(shift.value);
+  updateSuggestedPrompts();
+  updateContextSummary();
 });
 
-addMessage("Welcome. I am the hotel staff assistant. Ask about arrivals, rooms, incidents, FAQs, or approved automation.", "bot");
+addMessage("Welcome. I am the hotel staff assistant. I can help with arrivals, departures, rooms, guests, incidents, FAQs, and approved automation.", "bot");
+addMeta("The deterministic core is authoritative; AI is optional and cannot execute PMS operations.");
+updateContextSummary();
 loadCapabilities();
-updateSuggestedPrompts(shift.value);
+updateSuggestedPrompts();
 input.focus();
