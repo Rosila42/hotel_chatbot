@@ -1,66 +1,103 @@
-# Hotel PMS Chatbot V2
+# Hotel PMS Staff Assistant V2
 
-A lightweight local web application that adds a deterministic conversational and automation layer to an existing hotel PMS.
+A professional prototype of a hotel staff assistant that puts a conversational interface in front of PMS operations without giving an AI model authority to execute them.
 
-## What it is
+## What it demonstrates
 
-This project is **not a replacement PMS**. The PMS remains the system of record.
+The prototype is built around a simple principle:
 
-The application provides:
+> **Natural language at the front. Deterministic operations underneath.**
 
-- deterministic hotel FAQ and intent routing;
-- PMS information access;
-- controlled PMS operations;
-- predefined automation workflows;
-- role-based permissions;
-- persistent sessions and audit history;
-- an optional AI parsing boundary that is not required for core operation.
+Reception, Housekeeping, and Management can use the same hotel operations engine while permissions and confirmation rules remain centralized.
 
-The deterministic command pipeline is authoritative. An optional LLM may translate free text into a constrained `CommandRequest`, but authorization, validation, confirmation, and execution remain inside the deterministic core.
+The PMS remains the system of record. The application is a staff-assistance layer, not a replacement PMS.
 
-## Runtime architecture
+## Portfolio demo
+
+The demo follows one simulated hotel morning:
 
 ```text
-Browser / Desktop launcher
-          ↓
-        FastAPI
-          ↓
-  Deterministic Chat Router
-    ├── Command Registry
-    ├── Permission Service
-    ├── Confirmation Gate
-    └── Command Executor
-          ↓
-      PMS Service
-          ↓
-     PMS Interface
-      ├── Mock Adapter
-      └── Real REST Adapter (prototype)
+Reception
+   ↓
+arrivals + room readiness
+   ↓
+incident handling
+   ↓
+Housekeeping
+   ↓
+room status update
+   ↓
+Management
+   ↓
+operational summary + approved automation
 ```
 
-SQLite is used for local persistence. Alembic owns the database schema and is applied automatically during application startup.
+Start the local application and use the **Reception — Morning** mode.
 
-## Normal-user experience on Ubuntu
+The complete scripted workflow is in [`docs/portfolio-demo.md`](docs/portfolio-demo.md).
 
-The intended distribution format is a native Debian package (`.deb`). A non-technical user should not need a terminal.
+The demo deliberately includes both successful operations and a permission/confirmation boundary so the safety architecture is visible rather than only described.
+
+## Architecture
 
 ```text
-Download Hotel Chatbot V2 .deb
-            ↓
-Double-click the file
-            ↓
-Ubuntu Software → Install
-            ↓
-Open Applications → Hotel Chatbot V2
-            ↓
-Browser opens automatically
+                    User
+                     │
+             natural-language input
+                     │
+        ┌────────────┴────────────┐
+        │                         │
+ Deterministic parser       Optional LLM parser
+        │                         │
+        └────────────┬────────────┘
+                     │
+              CommandRequest
+                     │
+              Command Registry
+                     │
+                Permissions
+                     │
+                Validation
+                     │
+             Confirmation Gate
+                     │
+               Command Executor
+                     │
+                PMS Service
+                     │
+              PMS Interface
+               ┌─────┴─────┐
+               │           │
+           Mock PMS   REST prototype
 ```
 
-The package bundles the Python application, web assets, and Alembic migration resources. SQLite data is stored under the user's Linux application-data directory, not inside the installed program directory.
+The LLM, when enabled, is an **interpreter only**. It translates free text into a constrained `CommandRequest`. It does not authorize, validate, confirm, or execute PMS operations.
 
-## Development
+Predefined automation follows the same deterministic principle. The current prototype provides template-driven automation rather than AI-generated arbitrary multi-step workflows.
 
-The main development branch is `main`.
+## Hotel roles
+
+### Reception
+
+Reception uses the assistant for arrivals, departures, room readiness, guest/reservation lookup, incidents, FAQs, and shift-oriented suggestions.
+
+### Housekeeping
+
+Housekeeping focuses on rooms requiring attention, room status, incidents, and controlled room-status updates.
+
+### Management
+
+Management receives operational summaries and can inspect and run approved automation.
+
+All roles use the same command engine. Department and shift context only shape what is most useful to see and suggest.
+
+## Demo data
+
+The mock PMS provides deterministic hotel data for local demonstrations, including guests, reservations, room states, and an open incident. The demo is designed to work without connecting to a real PMS.
+
+## Running locally
+
+Python 3.12 is recommended.
 
 ```bash
 python3.12 -m venv .venv
@@ -69,7 +106,13 @@ pip install -r requirements-v2.txt
 PYTHONPATH=. pytest -v
 ```
 
-The local launcher starts the application at:
+Start the application:
+
+```bash
+bash run_v2.sh
+```
+
+Open:
 
 ```text
 http://127.0.0.1:8000/app/
@@ -81,15 +124,11 @@ FastAPI documentation is available at:
 http://127.0.0.1:8000/docs
 ```
 
-For a convenience desktop-style launcher on Ubuntu:
-
-```bash
-bash install_v2.sh
-```
+Ubuntu packaging is also available through `install_v2.sh` and the Debian packaging workflow.
 
 ## Demo users
 
-The V2 demo currently uses local bearer tokens:
+The local demo uses development-only bearer tokens:
 
 ```text
 Reception:      demo-reception-token
@@ -97,11 +136,11 @@ Housekeeping:   demo-housekeeping-token
 Management:     demo-manager-token
 ```
 
-These are demonstration credentials only. Production deployments should federate identity with the host PMS/application and must not expose demo credentials on untrusted networks.
+These credentials are intentionally limited to the local prototype and must not be used for production deployments.
 
 ## PMS integration
 
-Development defaults to the in-memory/mock PMS adapter.
+Development uses the in-memory mock PMS adapter.
 
 A REST-based `RealPMSAdapter` exists behind the `PMSInterface` boundary and can be selected with:
 
@@ -109,46 +148,45 @@ A REST-based `RealPMSAdapter` exists behind the `PMSInterface` boundary and can 
 export HOTEL_CHATBOT_PMS_ADAPTER=real
 ```
 
-The current real adapter is an integration skeleton: its transport, request tracing, retry policy, and data mapping are implemented, but its OAuth token exchange is still a placeholder. It is not yet a production PMS connector.
+The real adapter is an integration skeleton. Transport, tracing, retry policy, and data mapping are implemented, but its OAuth token exchange remains a placeholder.
 
 ## Optional AI
 
-The core installation does **not** require an LLM provider.
+The core system does not require an LLM provider.
 
-The optional AI boundary only translates user text into a constrained command request. The deterministic router remains responsible for authorization, parameter validation, confirmation, and execution.
+When enabled, AI only performs natural-language interpretation. The deterministic core remains authoritative for permissions, validation, confirmation, and execution.
 
 ## Verification
 
-Run the repository verification script:
+Use the repository verification script:
 
 ```bash
 bash verify_v2.sh
 ```
 
-Or run the exact test command directly:
+Or run the exact test command:
 
 ```bash
 PYTHONPATH=. pytest -v
 ```
 
-The CI workflow also checks JavaScript syntax with Node.js before the package workflow builds the Ubuntu installer.
+CI also checks JavaScript syntax before building the Ubuntu package.
 
-## Development status
+## What is intentionally out of scope
 
-The V2 foundation is implemented, including:
+This is a professional prototype, not a production hotel SaaS platform.
 
-- FastAPI API;
-- local web UI;
-- Ubuntu packaging workflow;
-- SQLite persistence and Alembic migrations;
-- authentication/identity boundary;
-- command registry and deterministic parser;
-- mock PMS adapter;
-- automation service and worker;
-- confirmation workflow with concurrency protection;
-- audit logging;
-- PMS resilience policy;
-- integration and unit test coverage;
-- optional AI parser boundary.
+The following are deliberately deferred:
 
-Remaining product work is primarily deeper hotel-specific workflows, production authentication integration, production PMS authentication/integration, richer FAQ content, and optional AI features.
+- production identity federation;
+- production PMS OAuth/integration;
+- public multi-tenant deployment;
+- multi-PMS vendor support;
+- AI-generated arbitrary workflows;
+- enterprise distributed infrastructure.
+
+Those can be evaluated later against real requirements rather than built speculatively.
+
+## Project status
+
+The V2 foundation is implemented and the current work is focused on productization of the hotel workflows: a coherent staff experience, realistic demo flow, useful UI presentation, and portfolio documentation.
