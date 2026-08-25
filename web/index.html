@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Hotel PMS Chatbot</title>
+  <title>Hotel PMS Staff Assistant</title>
+  <meta name="description" content="Hotel staff assistant for reception, housekeeping, and management operations.">
   <link rel="stylesheet" href="/app/style.css">
 </head>
 <body>
@@ -11,6 +12,7 @@
     <div>
       <div class="eyebrow">HOTEL PMS</div>
       <h1>Staff Assistant</h1>
+      <div id="context-summary" class="context-summary">Reception · Morning</div>
     </div>
     <div class="status" id="status">Connecting…</div>
   </header>
@@ -26,27 +28,28 @@
           <option value="manager">Management</option>
         </select>
 
-        <label for="shift">Shift</label>
+        <label for="shift">Reception shift</label>
         <select id="shift">
           <option value="">Not specified</option>
           <option value="morning">Morning</option>
           <option value="afternoon">Afternoon</option>
           <option value="night">Night</option>
         </select>
-        <button type="button" id="morning-mode-btn" class="quick">Reception — Morning</button>
+        <button type="button" id="morning-mode-btn" class="mode-button">Start Reception Morning Demo</button>
       </section>
 
       <section>
-        <h2>Available</h2>
+        <h2>Capabilities</h2>
         <div id="capabilities" class="capabilities">Loading…</div>
       </section>
 
       <section>
-        <h2>Try</h2>
-        <button class="quick" type="button" data-message="Who is checking in today?">Today's arrivals</button>
-        <button class="quick" type="button" data-message="Show operational summary">Operational summary</button>
-        <button class="quick" type="button" data-message="What is the status of room 101?">Room 101 status</button>
-        <button class="quick" type="button" data-message="What is the breakfast policy?">Breakfast FAQ</button>
+        <h2>Demo path</h2>
+        <div class="demo-path">
+          <span>1. Reception</span>
+          <span>2. Housekeeping</span>
+          <span>3. Management</span>
+        </div>
       </section>
 
       <section>
@@ -58,7 +61,7 @@
     <section class="chat-panel">
       <div id="messages" class="messages"></div>
       <form id="chat-form" class="composer">
-        <input id="message" autocomplete="off" placeholder="Ask the hotel assistant…" maxlength="4000">
+        <input id="message" autocomplete="off" placeholder="Ask naturally…" maxlength="4000" aria-label="Message">
         <button type="submit">Send</button>
       </form>
     </section>
