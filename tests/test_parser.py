@@ -127,6 +127,12 @@ def test_parser_accepts_room_set_filters():
     )
 
 
+def test_parser_maps_arrival_readiness_to_arrival_specific_filter():
+    assert build_parser().parse("which rooms are not ready for today's arrivals?") == CommandRequest(
+        "GET_ROOM_STATUS", {"filter": "not_ready_arrivals"}
+    )
+
+
 def test_parser_passive_dirty_room_question_remains_read_only():
     assert build_parser().parse("room 214 is dirty") == CommandRequest(
         "GET_ROOM_STATUS", {"room_number": "214"}
