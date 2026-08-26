@@ -123,12 +123,14 @@ class DeterministicParser:
             return CommandRequest("MARK_ROOM_CLEAN", {"room_number": room})
 
         if self._has_any(normalized, "not ready", "not-ready", "dirty rooms", "cleaning rooms", "available rooms"):
-            filter_name = (
-                "not_ready" if self._has_any(normalized, "not ready", "not-ready")
-                else "dirty" if "dirty rooms" in normalized
-                else "cleaning" if "cleaning rooms" in normalized
-                else "available"
-            )
+            if "not ready" in normalized or "not-ready" in normalized:
+                filter_name = "not_ready_arrivals" if "arrival" in normalized else "not_ready"
+            elif "dirty rooms" in normalized:
+                filter_name = "dirty"
+            elif "cleaning rooms" in normalized:
+                filter_name = "cleaning"
+            else:
+                filter_name = "available"
             return CommandRequest("GET_ROOM_STATUS", {"filter": filter_name})
 
         if room and self._has_any(
