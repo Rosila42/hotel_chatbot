@@ -109,9 +109,14 @@ def _build_observability(
     parser_request,
     state_before: str | None,
 ) -> dict:
-    command_name = result.command or (
-        pending_command.get("command") if pending_command else parser_request.name if parser_request else None
-    )
+    is_cancellation = request.message.strip().casefold() in {"cancel", "cancelled", "no", "abort"} and pending_command
+    if is_cancellation:
+        command_name = None
+    else:
+        command_name = result.command or (
+            pending_command.get("command") if pending_command else parser_request.name if parser_request else None
+        )
+
     if parser_request is not None:
         parameters = dict(parser_request.parameters)
     elif pending_command:
