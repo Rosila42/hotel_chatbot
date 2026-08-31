@@ -95,7 +95,7 @@ def _allowed_roles(permission: str | None) -> list[str]:
     ]
 
 
-def _room_status_for(room_number: str | None):
+def _room_status_for(room_number: str | None) -> str | None:
     if not room_number:
         return None
     rooms = _pms.get_room_status(room_number=room_number)
@@ -107,30 +107,32 @@ def _room_status_for(room_number: str | None):
 def _build_observability(
     identity: Identity,
     request: ChatRequest,
-    session,
+    pending_command: dict | None,
     result,
     command_definition,
     parser_request,
     state_before: str | None,
 ) -> dict:
-    command_name = result.command or (parser_request.name if parser_request else None)
-    parameters = (
-        dict(parser_request.parameters)
-        if parser_request is not None
-        else dict(session.pending_command["parameters"]) if session.pending_command else None
+    command_name = result.command or (
+        pending_command.get("command") if pending_command else parser_request.name if parser_request else None
     )
-    if result.command and session.pending_command is None and parser_request is None:
-        parameters = parameters or None
+    if parser_request is not None:
+        parameters = dict(parser_request.parameters)
+    elif pending_command:
+        parameters = dict(pending_command.get("parameters", {}))
+    else:
+        parameters = None
 
     allowed = bool(command_definition and _permissions.can(identity, command_definition.permission))
     allowed_roles = _allowed_roles(command_definition.permission if command_definition else None)
 
-    if result.kind.value == "AWAITING_CONFIRMATION":
-        confirmation_state = "pending"
-    elif result.kind.value == "SUCCESS" and command_definition and command_definition.confirmation.value == "REQUIRED":
-        confirmation_state = "confirmed"
-    elif result.kind.value == "SUCCESS" and request.message.strip().casefold() in {"cancel", "cancelled", "no", "abort"}:
+    normalized_message = request.message.strip().casefold()
+    if normalized_message in {"cancel", "cancelled", "no", "abort"} and pending_command:
         confirmation_state = "cancelled"
+    elif result.kind.value == "AWAITING_CONFIRMATION":
+        confirmation_state = "pending"
+    elif pending_command and result.kind.value == "SUCCESS":
+        confirmation_state = "confirmed"
     else:
         confirmation_state = "none"
 
@@ -141,7 +143,7 @@ def _build_observability(
     return {
         "command": command_name,
         "parameters": parameters,
-        "parser_source": "deterministic" if parser_request is not None else "pending_session",
+        "parser_source": "deterministic" if parser_request is not None else "pending_session" if pending_command else None,
         "permission": PermissionInfo(
             allowed=allowed,
             role=identity.role,
@@ -151,7 +153,10 @@ def _build_observability(
         "pms_adapter": type(_pms.adapter).__name__,
         "state_before": state_before,
         "state_after": state_after,
-        "audit_recorded": bool(command_definition and result.kind.value not in {"AWAITING_CONFIRMATION", "DENIED", "UNKNOWN_COMMAND"}),
+        "audit_recorded": bool(
+            command_definition
+            and not pending_command or command_definition and result.kind.value not in {"AWAITING_CONFIRMATION", "DENIED", "UNKNOWN_COMMAND"}
+        ),
     }
 
 
@@ -164,18 +169,18 @@ def chat(
     session_repo = SessionRepository(db)
     parser_request = None
     command_definition = None
+    pending_command = None
     state_before = None
 
     try:
         session = session_repo.load_or_create_session(identity, request.session_id, request.shift)
         session_repo.add_message(session.session_id, "user", request.message)
 
-        pending_command = session.pending_command
+        pending_command = dict(session.pending_command) if session.pending_command else None
         if pending_command:
             command_definition = _commands.get(pending_command["command"])
-            parameters = dict(pending_command.get("parameters", {}))
             if pending_command["command"] == "MARK_ROOM_CLEAN":
-                state_before = _room_status_for(parameters.get("room_number"))
+                state_before = _room_status_for(pending_command.get("parameters", {}).get("room_number"))
         else:
             parser_request = _parser.parse(request.message)
             if parser_request:
@@ -204,7 +209,7 @@ def chat(
     meta = _build_observability(
         identity,
         request,
-        session,
+        pending_command,
         result,
         command_definition,
         parser_request,
