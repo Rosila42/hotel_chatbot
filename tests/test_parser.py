@@ -48,6 +48,28 @@ def test_parser_create_incident_stays_a_command_request():
     assert request.parameters["incident_type"] == "MAINTENANCE"
 
 
+def test_parser_accepts_bare_problem_or_issue_as_incident_creation_language():
+    problem = build_parser().parse("Report that room 214 has an AC problem")
+    issue = build_parser().parse("Report that room 214 has an AC issue")
+
+    assert problem == CommandRequest(
+        "CREATE_INCIDENT",
+        {
+            "room_number": "214",
+            "incident_type": "MAINTENANCE",
+            "description": "Report that room 214 has an AC problem",
+        },
+    )
+    assert issue == CommandRequest(
+        "CREATE_INCIDENT",
+        {
+            "room_number": "214",
+            "incident_type": "MAINTENANCE",
+            "description": "Report that room 214 has an AC issue",
+        },
+    )
+
+
 def test_parser_preserves_automation_precedence_over_arrival_language():
     request = build_parser().parse("run morning arrival check")
 
@@ -124,6 +146,18 @@ def test_parser_accepts_room_status_questions():
 def test_parser_accepts_room_set_filters():
     assert build_parser().parse("which rooms are not ready?") == CommandRequest(
         "GET_ROOM_STATUS", {"filter": "not_ready"}
+    )
+
+
+def test_parser_accepts_apostrophe_readiness_variants():
+    assert build_parser().parse("which rooms aren't ready?") == CommandRequest(
+        "GET_ROOM_STATUS", {"filter": "not_ready"}
+    )
+
+
+def test_parser_accepts_arrival_apostrophe_readiness_variant():
+    assert build_parser().parse("which rooms aren't ready for today's arrivals?") == CommandRequest(
+        "GET_ROOM_STATUS", {"filter": "not_ready_arrivals"}
     )
 
 
