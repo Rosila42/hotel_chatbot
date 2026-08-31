@@ -123,8 +123,13 @@ def _build_observability(
     else:
         parameters = None
 
-    allowed = bool(command_definition and _permissions.can(identity, command_definition.permission))
-    allowed_roles = _allowed_roles(command_definition.permission if command_definition else None)
+    permission_info = None
+    if command_definition is not None:
+        permission_info = PermissionInfo(
+            allowed=_permissions.can(identity, command_definition.permission),
+            role=identity.role,
+            allowed_roles=_allowed_roles(command_definition.permission),
+        )
 
     normalized_message = request.message.strip().casefold()
     if normalized_message in {"cancel", "cancelled", "no", "abort"} and pending_command:
@@ -154,11 +159,7 @@ def _build_observability(
         "command": command_name,
         "parameters": parameters,
         "parser_source": "deterministic" if parser_request is not None else "pending_session" if pending_command else None,
-        "permission": PermissionInfo(
-            allowed=allowed,
-            role=identity.role,
-            allowed_roles=allowed_roles,
-        ),
+        "permission": permission_info,
         "confirmation": ConfirmationInfo(state=confirmation_state),
         "pms_adapter": type(_pms.adapter).__name__,
         "state_before": state_before,
@@ -186,13 +187,21 @@ def chat(
         pending_command = dict(session.pending_command) if session.pending_command else None
         if pending_command:
             command_definition = _commands.get(pending_command["command"])
-            if pending_command["command"] == "MARK_ROOM_CLEAN":
+            if (
+                pending_command["command"] == "MARK_ROOM_CLEAN"
+                and command_definition is not None
+                and _permissions.can(identity, command_definition.permission)
+            ):
                 state_before = _room_status_for(pending_command.get("parameters", {}).get("room_number"))
         else:
             parser_request = _parser.parse(request.message)
             if parser_request:
                 command_definition = _commands.get(parser_request.name)
-                if parser_request.name == "MARK_ROOM_CLEAN":
+                if (
+                    parser_request.name == "MARK_ROOM_CLEAN"
+                    and command_definition is not None
+                    and _permissions.can(identity, command_definition.permission)
+                ):
                     state_before = _room_status_for(parser_request.parameters.get("room_number"))
 
         result = _router.handle(session, request.message, db=db)
