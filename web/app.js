@@ -70,6 +70,12 @@ function addMeta(text, tone = "default") {
   messages.appendChild(meta);
 }
 
+function addMetaLine(label, value, tone = "default") {
+  if (value !== undefined && value !== null && String(value).trim() !== "") {
+    addMeta(`${label}: ${value}`, tone);
+  }
+}
+
 function currentSuggestions() {
   const roleKey = role.value;
   const roleConfig = ROLE_SUGGESTIONS[roleKey] || ROLE_SUGGESTIONS.reception;
@@ -158,21 +164,68 @@ async function loadCapabilities() {
   }
 }
 
-function metaForCommand(command) {
-  if (!command) return null;
-  const writes = new Set([
-    "MARK_ROOM_CLEAN",
-    "CREATE_INCIDENT",
-    "RESOLVE_INCIDENT",
-    "ENABLE_AUTOMATION",
-    "DISABLE_AUTOMATION",
-    "RUN_AUTOMATION",
-  ]);
-  const tone = writes.has(command) ? "write" : "read";
-  return {
-    text: `${command} · ${tone === "write" ? "write / confirmation gate" : "read"}`,
-    tone,
-  };
+function buildObservabilityMeta(result) {
+  const meta = [];
+
+  if (result.command) {
+    const params = result.parameters
+      ? Object.entries(result.parameters)
+          .map(([key, value]) => `${key}=${value}`)
+          .join(", ")
+      : "";
+    const commandText = params ? `${result.command} ${params}` : result.command;
+    meta.push({ label: "Command", value: commandText, tone: "default" });
+    if (result.parser_source) {
+      meta.push({ label: "Parser", value: result.parser_source, tone: "default" });
+    }
+  }
+
+  if (result.permission) {
+    const perm = result.permission;
+    if (perm.allowed) {
+      meta.push({ label: "Permission", value: `allowed · ${perm.role}`, tone: "allowed" });
+    } else {
+      const allowedRoles = perm.allowed_roles?.join(", ") || "none";
+      meta.push({
+        label: "Permission",
+        value: `denied · ${perm.role} (allowed: ${allowedRoles})`,
+        tone: "denied",
+      });
+    }
+  }
+
+  if (result.confirmation) {
+    const conf = result.confirmation;
+    if (conf.state === "pending") {
+      meta.push({ label: "Confirmation", value: "PENDING — no PMS write yet", tone: "write" });
+    } else if (conf.state === "confirmed") {
+      meta.push({ label: "Confirmation", value: "confirmed", tone: "allowed" });
+    } else if (conf.state === "cancelled") {
+      meta.push({ label: "Confirmation", value: "cancelled — no PMS write", tone: "denied" });
+    }
+  }
+
+  if (result.pms_adapter) {
+    meta.push({ label: "PMS", value: result.pms_adapter, tone: "default" });
+  }
+
+  if (result.state_before !== undefined && result.state_before !== null && result.state_after !== undefined && result.state_after !== null) {
+    meta.push({
+      label: "State",
+      value: `${result.state_before} → ${result.state_after}`,
+      tone: "default",
+    });
+  }
+
+  if (result.audit_recorded !== undefined && result.audit_recorded !== null) {
+    meta.push({
+      label: "Audit",
+      value: result.audit_recorded ? "recorded" : "not recorded",
+      tone: result.audit_recorded ? "allowed" : "denied",
+    });
+  }
+
+  return meta;
 }
 
 async function sendMessage(text) {
@@ -195,8 +248,10 @@ async function sendMessage(text) {
     sessionId = result.session_id;
     addMessage(result.message, "bot");
 
-    const commandMeta = metaForCommand(result.command);
-    if (commandMeta) addMeta(`Command: ${commandMeta.text}`, commandMeta.tone);
+    const observabilityMeta = buildObservabilityMeta(result);
+    observabilityMeta.forEach((item) => {
+      addMetaLine(item.label, item.value, item.tone);
+    });
   } catch (error) {
     addMessage(`The request could not be completed: ${error.message}`, "bot");
   }
