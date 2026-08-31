@@ -109,6 +109,8 @@ select {
 }
 .message.meta.write { color: #8b5b18; }
 .message.meta.read { color: #566b84; }
+.message.meta.allowed { color: #2f6f45; }
+.message.meta.denied { color: #9a3d3d; }
 
 .composer {
   display: flex;
