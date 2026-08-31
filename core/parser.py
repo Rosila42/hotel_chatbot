@@ -125,6 +125,8 @@ class DeterministicParser:
         if self._has_any(normalized, "not ready", "not-ready", "dirty rooms", "cleaning rooms", "available rooms"):
             if "not ready" in normalized or "not-ready" in normalized:
                 filter_name = "not_ready_arrivals" if "arrival" in normalized else "not_ready"
+            elif self._has_any(normalized, "not ready", "not-ready", "aren't ready", "isn't ready"):
+                filter_name = "not_ready_arrivals" if "arrival" in normalized else "not_ready"
             elif "dirty rooms" in normalized:
                 filter_name = "dirty"
             elif "cleaning rooms" in normalized:

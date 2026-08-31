@@ -70,6 +70,16 @@ function addMeta(text, tone = "default") {
   messages.appendChild(meta);
 }
 
+/**
+ * Adds a meta line only if the value is present and non‑empty.
+ * Used for the observability gates.
+ */
+function addMetaLine(label, value, tone = "default") {
+  if (value !== undefined && value !== null && String(value).trim() !== "") {
+    addMeta(`${label}: ${value}`, tone);
+  }
+}
+
 function currentSuggestions() {
   const roleKey = role.value;
   const roleConfig = ROLE_SUGGESTIONS[roleKey] || ROLE_SUGGESTIONS.reception;
@@ -158,21 +168,96 @@ async function loadCapabilities() {
   }
 }
 
-function metaForCommand(command) {
-  if (!command) return null;
-  const writes = new Set([
-    "MARK_ROOM_CLEAN",
-    "CREATE_INCIDENT",
-    "RESOLVE_INCIDENT",
-    "ENABLE_AUTOMATION",
-    "DISABLE_AUTOMATION",
-    "RUN_AUTOMATION",
-  ]);
-  const tone = writes.has(command) ? "write" : "read";
-  return {
-    text: `${command} · ${tone === "write" ? "write / confirmation gate" : "read"}`,
-    tone,
-  };
+/**
+ * Builds an array of observability meta items from the backend response.
+ * Each item is { label, value, tone } and will be displayed by addMetaLine.
+ */
+function buildObservabilityMeta(result) {
+  const meta = [];
+
+  // Gate 1: Input observability
+  if (result.command) {
+    const params = result.parameters
+      ? Object.entries(result.parameters)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(", ")
+      : "";
+    const commandText = params ? `${result.command} ${params}` : result.command;
+    meta.push({ label: "Command", value: commandText, tone: "default" });
+    if (result.parser_source) {
+      meta.push({ label: "Parser", value: result.parser_source, tone: "default" });
+    }
+  }
+
+  // Gate 2: Permission observability
+  if (result.permission) {
+    const perm = result.permission;
+    if (perm.allowed) {
+      meta.push({
+        label: "Permission",
+        value: `allowed · ${perm.role}`,
+        tone: "allowed",
+      });
+    } else {
+      const allowedRoles = perm.allowed_roles?.join(", ") || "none";
+      meta.push({
+        label: "Permission",
+        value: `denied · ${perm.role} (allowed: ${allowedRoles})`,
+        tone: "denied",
+      });
+    }
+  }
+
+  // Gate 3: Confirmation observability
+  if (result.confirmation) {
+    const conf = result.confirmation;
+    if (conf.state === "pending") {
+      meta.push({
+        label: "Confirmation",
+        value: "PENDING — no PMS write yet",
+        tone: "write",
+      });
+    } else if (conf.state === "confirmed") {
+      meta.push({
+        label: "Confirmation",
+        value: "confirmed",
+        tone: "allowed",
+      });
+    } else if (conf.state === "cancelled") {
+      meta.push({
+        label: "Confirmation",
+        value: "cancelled — no PMS write",
+        tone: "denied",
+      });
+    }
+  }
+
+  // Gate 4: PMS boundary observability
+  if (result.pms_adapter) {
+    meta.push({
+      label: "PMS",
+      value: result.pms_adapter,
+      tone: "default",
+    });
+  }
+
+  // Gate 5: Audit/state observability
+  if (result.state_before !== undefined && result.state_after !== undefined) {
+    meta.push({
+      label: "State",
+      value: `${result.state_before} → ${result.state_after}`,
+      tone: "default",
+    });
+  }
+  if (result.audit_recorded !== undefined) {
+    meta.push({
+      label: "Audit",
+      value: result.audit_recorded ? "recorded" : "not recorded",
+      tone: result.audit_recorded ? "allowed" : "denied",
+    });
+  }
+
+  return meta;
 }
 
 async function sendMessage(text) {
@@ -195,8 +280,11 @@ async function sendMessage(text) {
     sessionId = result.session_id;
     addMessage(result.message, "bot");
 
-    const commandMeta = metaForCommand(result.command);
-    if (commandMeta) addMeta(`Command: ${commandMeta.text}`, commandMeta.tone);
+    // Display observability gates (Input, Permission, Confirmation, PMS, Audit/State)
+    const observabilityMeta = buildObservabilityMeta(result);
+    observabilityMeta.forEach((item) => {
+      addMetaLine(item.label, item.value, item.tone);
+    });
   } catch (error) {
     addMessage(`The request could not be completed: ${error.message}`, "bot");
   }
