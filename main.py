@@ -140,6 +140,16 @@ def _build_observability(
     if command_name == "MARK_ROOM_CLEAN" and result.kind.value == "SUCCESS" and parameters:
         state_after = _room_status_for(parameters.get("room_number"))
 
+    executed = bool(
+        command_definition
+        and not pending_command
+        and result.kind.value not in {"AWAITING_CONFIRMATION", "DENIED", "UNKNOWN_COMMAND"}
+    ) or bool(
+        command_definition
+        and pending_command
+        and result.kind.value == "SUCCESS"
+    )
+
     return {
         "command": command_name,
         "parameters": parameters,
@@ -153,10 +163,7 @@ def _build_observability(
         "pms_adapter": type(_pms.adapter).__name__,
         "state_before": state_before,
         "state_after": state_after,
-        "audit_recorded": bool(
-            command_definition
-            and not pending_command or command_definition and result.kind.value not in {"AWAITING_CONFIRMATION", "DENIED", "UNKNOWN_COMMAND"}
-        ),
+        "audit_recorded": executed,
     }
 
 
