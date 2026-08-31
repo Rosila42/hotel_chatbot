@@ -78,6 +78,20 @@ class DeterministicParser:
         if incident_id and self._has_any(normalized, "resolve incident", "close incident", "resolve issue", "close issue"):
             return CommandRequest("RESOLVE_INCIDENT", {"incident_id": incident_id})
 
+        # Room-readiness questions must take precedence over generic arrival wording.
+        if self._has_any(normalized, "not ready", "not-ready", "aren't ready", "isn't ready"):
+            filter_name = "not_ready_arrivals" if "arrival" in normalized else "not_ready"
+            return CommandRequest("GET_ROOM_STATUS", {"filter": filter_name})
+
+        if self._has_any(normalized, "dirty rooms", "cleaning rooms", "available rooms"):
+            if "dirty rooms" in normalized:
+                filter_name = "dirty"
+            elif "cleaning rooms" in normalized:
+                filter_name = "cleaning"
+            else:
+                filter_name = "available"
+            return CommandRequest("GET_ROOM_STATUS", {"filter": filter_name})
+
         if self._mentions_arrivals(normalized):
             return CommandRequest("GET_ARRIVALS", {"date": self._requested_date(normalized).isoformat()})
         if self._mentions_departures(normalized):
@@ -121,26 +135,6 @@ class DeterministicParser:
             or ("clean" in normalized and self._has_any(normalized, "mark", "set", "make"))
         ):
             return CommandRequest("MARK_ROOM_CLEAN", {"room_number": room})
-
-        if self._has_any(
-            normalized,
-            "not ready",
-            "not-ready",
-            "aren't ready",
-            "isn't ready",
-            "dirty rooms",
-            "cleaning rooms",
-            "available rooms",
-        ):
-            if self._has_any(normalized, "not ready", "not-ready", "aren't ready", "isn't ready"):
-                filter_name = "not_ready_arrivals" if "arrival" in normalized else "not_ready"
-            elif "dirty rooms" in normalized:
-                filter_name = "dirty"
-            elif "cleaning rooms" in normalized:
-                filter_name = "cleaning"
-            else:
-                filter_name = "available"
-            return CommandRequest("GET_ROOM_STATUS", {"filter": filter_name})
 
         if room and self._has_any(
             normalized,
