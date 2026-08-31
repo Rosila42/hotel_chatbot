@@ -49,7 +49,8 @@ class CommandRegistry:
                 "GET_ROOM_STATUS", "Get a room or filtered room set.", OperationType.READ, "pms.room.read", params_model=RoomStatusParams
             ),
             "MARK_ROOM_CLEAN": CommandDefinition(
-                "MARK_ROOM_CLEAN", "Mark a room clean.", OperationType.WRITE, "housekeeping.room.update", params_model=RoomNumberParams
+                "MARK_ROOM_CLEAN", "Mark a room clean.", OperationType.WRITE, "housekeeping.room.update",
+                ConfirmationPolicy.REQUIRED, RoomNumberParams
             ),
             "GET_INCIDENTS": CommandDefinition(
                 "GET_INCIDENTS", "Get incidents.", OperationType.READ, "pms.incident.read", params_model=IncidentFilterParams
@@ -85,12 +86,10 @@ class CommandRegistry:
                 ConfirmationPolicy.REQUIRED, AutomationIdParams
             ),
             "GET_AUTOMATION_STATUS": CommandDefinition(
-                "GET_AUTOMATION_STATUS", "Get automation status.", OperationType.READ, "automation.read",
-                params_model=AutomationIdParams
+                "GET_AUTOMATION_STATUS", "Get automation status.", OperationType.READ, "automation.read", params_model=AutomationIdParams
             ),
             "GET_AUTOMATION_HISTORY": CommandDefinition(
-                "GET_AUTOMATION_HISTORY", "Get automation execution history.", OperationType.READ, "automation.read",
-                params_model=AutomationIdParams
+                "GET_AUTOMATION_HISTORY", "Get automation execution history.", OperationType.READ, "automation.read", params_model=AutomationIdParams
             ),
         }
 
