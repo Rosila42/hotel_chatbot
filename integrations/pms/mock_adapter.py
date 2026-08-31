@@ -7,7 +7,7 @@ from models.pms import Guest, Incident, IncidentStatus, Reservation, Room, RoomS
 
 
 class MockPMSAdapter:
-    """In-memory PMS API adapter used for V1 development and demos."""
+    """In-memory PMS adapter used for local development and portfolio demos."""
 
     def __init__(self) -> None:
         today = date.today()
@@ -23,7 +23,18 @@ class MockPMSAdapter:
             Reservation("r1", "g1", "John Martin", "214", today, today + timedelta(days=3), "CONFIRMED"),
             Reservation("r2", "g2", "Anna Silva", "101", today + timedelta(days=1), today + timedelta(days=4), "CONFIRMED"),
         ]
-        self.incidents: dict[str, Incident] = {"i1": Incident("i1", "214", "MAINTENANCE", "Air conditioning not working", IncidentStatus.OPEN, datetime.now())}
+        # Room 214 starts without a pre-existing AC incident so the demo can
+        # create that incident during the scripted flow.
+        self.incidents: dict[str, Incident] = {
+            "i1": Incident(
+                "i1",
+                "102",
+                "HOUSEKEEPING",
+                "Room requires additional cleaning",
+                IncidentStatus.OPEN,
+                datetime.now(),
+            )
+        }
 
     def search_guests(self, name: str) -> list[Guest]:
         needle = name.strip().lower()
@@ -31,15 +42,21 @@ class MockPMSAdapter:
 
     def get_reservation(self, reservation_id: str | None = None, guest_name: str | None = None) -> list[Reservation]:
         results = self.reservations
-        if reservation_id: results = [r for r in results if r.reservation_id == reservation_id]
+        if reservation_id:
+            results = [r for r in results if r.reservation_id == reservation_id]
         if guest_name:
             needle = guest_name.strip().lower()
             results = [r for r in results if needle in r.guest_name.lower()]
         return results
 
-    def get_arrivals(self, on_date: date) -> list[Reservation]: return [r for r in self.reservations if r.arrival == on_date]
-    def get_departures(self, on_date: date) -> list[Reservation]: return [r for r in self.reservations if r.departure == on_date]
-    def get_room(self, room_number: str) -> Room | None: return self.rooms.get(str(room_number))
+    def get_arrivals(self, on_date: date) -> list[Reservation]:
+        return [r for r in self.reservations if r.arrival == on_date]
+
+    def get_departures(self, on_date: date) -> list[Reservation]:
+        return [r for r in self.reservations if r.departure == on_date]
+
+    def get_room(self, room_number: str) -> Room | None:
+        return self.rooms.get(str(room_number))
 
     def get_rooms(self, status: RoomStatus | None = None) -> list[Room]:
         rooms = list(self.rooms.values())
@@ -47,8 +64,10 @@ class MockPMSAdapter:
 
     def mark_room_clean(self, room_number: str) -> Room:
         room = self.get_room(room_number)
-        if room is None: raise ValueError(f"Room {room_number} does not exist")
-        if room.status not in {RoomStatus.DIRTY, RoomStatus.CLEANING}: raise ValueError(f"Room {room_number} cannot be marked clean from {room.status.value}")
+        if room is None:
+            raise ValueError(f"Room {room_number} does not exist")
+        if room.status not in {RoomStatus.DIRTY, RoomStatus.CLEANING}:
+            raise ValueError(f"Room {room_number} cannot be marked clean from {room.status.value}")
         updated = Room(room.room_number, RoomStatus.READY, room.room_type)
         self.rooms[room.room_number] = updated
         return updated
@@ -61,14 +80,30 @@ class MockPMSAdapter:
 
     def create_incident(self, room_number: str | None, incident_type: str, description: str) -> Incident:
         incident_id = f"i{len(self.incidents) + 1}"
-        incident = Incident(incident_id, str(room_number) if room_number else None, incident_type.upper(), description.strip(), IncidentStatus.OPEN, datetime.now())
+        incident = Incident(
+            incident_id,
+            str(room_number) if room_number else None,
+            incident_type.upper(),
+            description.strip(),
+            IncidentStatus.OPEN,
+            datetime.now(),
+        )
         self.incidents[incident_id] = incident
         return incident
 
     def resolve_incident(self, incident_id: str) -> Incident:
         incident = self.incidents.get(incident_id)
-        if incident is None: raise ValueError(f"Incident {incident_id} does not exist")
-        if incident.status == IncidentStatus.RESOLVED: return incident
-        resolved = Incident(incident.incident_id, incident.room_number, incident.incident_type, incident.description, IncidentStatus.RESOLVED, incident.created_at)
+        if incident is None:
+            raise ValueError(f"Incident {incident_id} does not exist")
+        if incident.status == IncidentStatus.RESOLVED:
+            return incident
+        resolved = Incident(
+            incident.incident_id,
+            incident.room_number,
+            incident.incident_type,
+            incident.description,
+            IncidentStatus.RESOLVED,
+            incident.created_at,
+        )
         self.incidents[incident_id] = resolved
         return resolved
