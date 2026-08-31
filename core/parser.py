@@ -122,10 +122,17 @@ class DeterministicParser:
         ):
             return CommandRequest("MARK_ROOM_CLEAN", {"room_number": room})
 
-        if self._has_any(normalized, "not ready", "not-ready", "dirty rooms", "cleaning rooms", "available rooms"):
-            if "not ready" in normalized or "not-ready" in normalized:
-                filter_name = "not_ready_arrivals" if "arrival" in normalized else "not_ready"
-            elif self._has_any(normalized, "not ready", "not-ready", "aren't ready", "isn't ready"):
+        if self._has_any(
+            normalized,
+            "not ready",
+            "not-ready",
+            "aren't ready",
+            "isn't ready",
+            "dirty rooms",
+            "cleaning rooms",
+            "available rooms",
+        ):
+            if self._has_any(normalized, "not ready", "not-ready", "aren't ready", "isn't ready"):
                 filter_name = "not_ready_arrivals" if "arrival" in normalized else "not_ready"
             elif "dirty rooms" in normalized:
                 filter_name = "dirty"
@@ -196,6 +203,7 @@ class DeterministicParser:
             "create incident", "report incident", "report a problem", "report an issue",
             "report a dirty room", "report dirty room", "broken", "not working",
             "doesn't work", "does not work", "malfunction", "problem with", "issue with",
+            "problem", "issue",
         ))
 
     @staticmethod
