@@ -25,11 +25,16 @@ def _cleanup_test_db() -> None:
 
 atexit.register(_cleanup_test_db)
 
+from integrations.pms.mock_adapter import MockPMSAdapter  # noqa: E402
 from main import app  # noqa: E402
+import main  # noqa: E402
 
 
 @pytest.fixture
 def client():
+    # Each integration test gets a fresh mock PMS state. The application services
+    # are intentionally shared, so only the mutable adapter needs to be reset.
+    main._pms.adapter = MockPMSAdapter()
     with TestClient(app) as test_client:
         yield test_client
 
