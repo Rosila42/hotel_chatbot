@@ -5,7 +5,7 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -29,6 +29,9 @@ from services.session_repository import (
     SessionRepository,
 )
 from storage import get_db, init_db
+
+
+APP_VERSION = "0.1.1"
 
 
 def _application_root() -> Path:
@@ -72,7 +75,17 @@ async def lifespan(app: FastAPI):
     _worker.stop()
 
 
-app = FastAPI(title="Hotel PMS Chatbot V2", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Hotel PMS Chatbot V2", version=APP_VERSION, lifespan=lifespan)
+
+
+@app.middleware("http")
+async def disable_demo_asset_caching(request: Request, call_next):
+    """Prevent stale demo HTML/JS/CSS from surviving source/package updates."""
+    response = await call_next(request)
+    if request.url.path == "/app" or request.url.path.startswith("/app/"):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @app.get("/")
@@ -82,7 +95,7 @@ def root() -> RedirectResponse:
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+    return {"status": "ok", "version": APP_VERSION}
 
 
 def _allowed_roles(permission: str | None) -> list[str]:
