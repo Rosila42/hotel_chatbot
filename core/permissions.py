@@ -23,6 +23,7 @@ class PermissionService:
             "pms.reservation.read",
             "pms.room.read",
             "pms.incident.read",
+            "pms.incident.create",
         },
         "housekeeper": {
             "pms.room.read",
