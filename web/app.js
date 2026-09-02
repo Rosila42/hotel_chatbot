@@ -152,7 +152,10 @@ async function api(path, options = {}) {
 
 async function loadCapabilities() {
   try {
-    const result = await api("/capabilities");
+    const [result, health] = await Promise.all([
+      api("/capabilities"),
+      api("/health"),
+    ]);
     capabilities.innerHTML = "";
     for (const name of result.commands) {
       const tag = document.createElement("span");
@@ -160,7 +163,8 @@ async function loadCapabilities() {
       tag.textContent = name;
       capabilities.appendChild(tag);
     }
-    status.textContent = "Connected · deterministic core · AI optional";
+    const version = health.version ? `v${health.version}` : "version unknown";
+    status.textContent = `Connected · ${version} · deterministic core · AI optional`;
     updateContextSummary();
   } catch (error) {
     status.textContent = "Connection error";
