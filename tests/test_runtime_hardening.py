@@ -4,6 +4,7 @@ from pathlib import Path
 from threading import Lock
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -147,6 +148,21 @@ def test_launcher_disables_terminal_and_network_bind_is_opt_in():
     assert "Terminal=false" in install_script
     assert "ALLOW_INSECURE_NETWORK_DEMO" in run_script
     assert "Refusing non-loopback bind" in run_script
+
+
+def test_runtime_version_and_asset_cache_controls():
+    from main import APP_VERSION, app
+
+    with TestClient(app) as client:
+        health = client.get("/health")
+        assert health.status_code == 200
+        assert health.json()["version"] == APP_VERSION == "0.1.1"
+
+        index = client.get("/app/")
+        assert index.status_code == 200
+        assert index.headers["cache-control"] == "no-store, max-age=0"
+        assert "app.js?v=0.1.1" in index.text
+        assert "style.css?v=0.1.1" in index.text
 
 
 def test_shift_change_clears_transcript():
