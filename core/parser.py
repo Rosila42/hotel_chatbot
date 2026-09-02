@@ -195,8 +195,8 @@ class DeterministicParser:
     def _mentions_incident_creation(text: str) -> bool:
         return any(phrase in text for phrase in (
             "create incident", "report incident", "report a problem", "report an issue",
-            "report a dirty room", "report dirty room", "broken", "not working",
-            "doesn't work", "does not work", "malfunction", "problem with", "issue with",
+            "report a dirty room", "report dirty room", "broken", "not working", "isn't working",
+            "is not working", "doesn't work", "does not work", "malfunction", "problem with", "issue with",
             "problem", "issue",
         ))
 
