@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  APP_VERSION: "0.1.1"
+
 jobs:
   build-deb:
     runs-on: ubuntu-latest
@@ -44,7 +47,7 @@ jobs:
 
       - name: Build Debian package
         run: |
-          VERSION="0.1.0"
+          VERSION="${APP_VERSION}"
           PKG="hotel-chatbot-v2_${VERSION}_amd64"
           mkdir -p "dist/${PKG}/DEBIAN"
           mkdir -p "dist/${PKG}/opt/hotel-chatbot-v2"
@@ -72,4 +75,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: hotel-chatbot-v2-ubuntu
-          path: dist/hotel-chatbot-v2_0.1.0_amd64.deb
+          path: dist/hotel-chatbot-v2_${{ env.APP_VERSION }}_amd64.deb
