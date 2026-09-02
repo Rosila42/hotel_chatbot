@@ -54,14 +54,16 @@ def test_required_confirmation_is_enforced_by_router():
     builder.executor.execute.assert_not_called()
 
 
-def test_flaw_3_contract_denied_before_confirmation_or_execution():
+def test_reception_incident_report_requires_confirmation_before_execution():
     builder = build_router()
     session = builder.session("receptionist", "reception")
 
     result = builder.router.handle(session, "the AC in room 214 is broken")
 
-    assert result.kind is ResultKind.DENIED
-    assert session.pending_command is None
+    assert result.kind is ResultKind.AWAITING_CONFIRMATION
+    assert result.command == "CREATE_INCIDENT"
+    assert session.pending_command is not None
+    assert session.pending_command["command"] == "CREATE_INCIDENT"
     builder.executor.execute.assert_not_called()
 
 
